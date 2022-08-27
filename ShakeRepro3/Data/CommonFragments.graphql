@@ -1,0 +1,39 @@
+fragment Price on Price {
+    value(currency: $currency, period: $pricePeriod)
+    originalCurrency
+    originalPeriod
+    originalUnit
+}
+
+fragment HasNoteBoolean on NoteBoolean{
+    value
+    note
+}
+
+fragment HasPrice on Offer{
+    price{
+        ...Price
+    }
+}
+
+fragment HasStartingPrice on Auction{
+    startingPrice{
+        ...Price
+    }
+}
+
+fragment HasEventDate on Auction{
+    eventDate
+}
+
+fragment AddressListing on AddressBlurred {
+    lat
+    lng
+    cityName
+    streetName
+    eviNumber
+    oriNumber
+    dscNumber
+    ruianCode
+    blurBoundary
+}

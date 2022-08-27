@@ -1,0 +1,39 @@
+query getProjectDetailItems($listingId: ID!,$currency: Currency!, $pricePeriod: PricePeriod!) {
+    listing(listingId: $listingId) {
+        ...HasProjectItems
+    }
+}
+
+fragment HasProjectItems on Project {
+    listings {
+        ...ProjectListingsDetail
+    }
+}
+
+fragment ProjectListingsDetail on ProjectListings{
+    satisfiesFilter {
+        ...ProjectDetailListingPayload
+    }
+    other {
+        ...ProjectDetailListingPayload
+    }
+}
+
+fragment ProjectDetailListingPayload on ListingSelection {
+    items{
+        ...ListingSimpleDetail
+    }
+    count
+}
+
+fragment ListingSimpleDetail on ListingSimple {
+    ...HasListingId
+
+    ...HasPrice #offer
+    ...HasStartingPrice #auction
+    ...HasEventDate
+
+    ...HasEstate
+    ...HasServiceType
+}
+

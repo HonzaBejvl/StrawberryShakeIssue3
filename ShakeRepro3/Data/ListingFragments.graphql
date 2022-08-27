@@ -1,0 +1,136 @@
+fragment HasEstate on ListingSimple{
+    estate {
+        ...Estate
+        ...HasMinimalAddress
+    }
+}
+
+fragment Estate on Estate {
+    type
+    lawProtection
+    electricity
+    gas
+    water
+    heating
+    waste
+    road
+    connectivity
+    servitude {
+        ...HasNoteBoolean
+    }
+    ...HasEstateTypeInfo
+}
+
+fragment HasMinimalAddress on Estate{
+    address {
+        ...AddressListing
+    }
+}
+
+fragment HasEstateTypeInfo on Estate {
+    typeInfo {
+        ...ApartmentInfo
+        ...LandInfo
+        ...GarageInfo
+        ...HouseInfo
+        ...CommercialInfo
+    }
+}
+
+fragment ApartmentInfo on ApartmentInfo {
+    apartmentType: type
+    usableArea
+    material
+    energyEfficiency
+    energyCertificate
+    condition
+    material
+    balconyArea
+    terraceArea
+    loggiaArea
+    cellarArea
+    ceilingHeight
+    poolArea
+    acceptanceYear
+    constructionYear
+    reconstructionYear
+    buildingAddon
+    amenity
+    roomCount
+    floorNumber
+    apartmentNumber
+    placement
+    specialClass
+    placementSpecial
+}
+
+fragment HouseInfo on HouseInfo {
+    houseType: type
+    energyEfficiency
+    energyCertificate
+    condition
+    material
+    placement
+    roomCount
+    ceilingHeight
+    usableArea
+    balconyArea
+    terraceArea
+    ceilingHeight
+    loggiaArea
+    reconstructionYear
+    constructionYear
+    acceptanceYear
+    cellarArea
+    poolArea
+    roomCount
+    landArea
+    placement
+    placementSpecial
+    buildingAddon
+    amenity
+}
+
+fragment CommercialInfo on CommercialInfo {
+    commercialType: type
+    energyEfficiency
+    energyCertificate
+    condition
+    material
+    placement
+    ceilingHeight
+    usableArea
+    ceilingHeight
+    constructionYear
+    acceptanceYear
+    reconstructionYear
+    storeArea
+    officeArea
+    warehouseArea
+    productionArea
+    placement
+    placementSpecial
+    buildingAddon
+}
+
+fragment LandInfo on LandInfo {
+    landlType: type
+    landArea
+}
+
+fragment GarageInfo on GarageInfo {
+    garageType: type
+    usableArea
+    energyEfficiency
+    energyCertificate
+    buildingAddon
+}
+
+fragment HasListingId on Listing {
+    listingId
+}
+
+fragment HasServiceType on ListingSimple {
+    serviceType
+    tourNote
+}

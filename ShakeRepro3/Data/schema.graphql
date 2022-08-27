@@ -1,0 +1,4946 @@
+﻿"""
+Nemovizor GraphQL API
+
+Tento dokument popisuje funcionalitu Nemovizor API, které pro komunikaci používá technologii GraphQL a protokol HTTPS.
+Případně je také možno použít převodní můstek z technologie XMLRPC, která je využívána portálem SReality.cz.
+
+API endpoint se nechází na adrese: https://api.nemovizor.cz/
+Více informací o technologii GraphQL: https://graphql.org/
+Více informací o GraphQL přes HTTPS: https://graphql.org/learn/serving-over-http/
+Více informací o převodním můstku z XMLRPC: https://github.com/infinityloop-dev/nemovizor-sreality/
+"""
+schema {
+query: Query
+mutation: Mutation
+subscription: null
+}
+
+"""
+Grafická položka - např. fotka nebo video
+"""
+interface Figure {
+"ID grafiky přidělené od Nemovizor.cz (unikátní pro Nemovizor.cz)"
+figureId: ID!
+
+"ID grafiky přidělené uživatelem (unikátní pro firmu)"
+customId: ID
+
+"Url na soubor"
+url: Url!
+
+"Popis obsahu (alt)"
+description(
+lang: Language! = CS
+): String!
+}
+
+"""
+Abstraktní nabídka - obyčejná nabídka, aukce nebo projekt
+"""
+interface Listing {
+"ID nabídky přidělené od Nemovizor.cz (unikátní pro Nemovizor.cz)"
+listingId: ID!
+
+"ID nabídky přidělené uživatelem (unikátní pro firmu)"
+customId: ID
+
+"Adresa s detailem nabídky na Nemovizor.cz"
+url: Url!
+
+"Titulek"
+title(
+lang: Language! = CS
+): String!
+
+"Detailní popis"
+description(
+lang: Language! = CS
+): String!
+
+"Profil prodávajícího"
+seller: Seller
+
+"Prezentace z grafických položek"
+slideshow(
+linear: Boolean = false
+): SlideSelection!
+
+"Všechny grafické položky"
+figures: FigureSelection!
+
+"Fotky"
+photos: PhotoSelection!
+
+"Videa"
+videos: VideoSelection!
+
+"Půdorysy"
+floorPlans: FloorPlanSelection!
+
+"Prohlídka matterport"
+matterport: Matterport
+
+"Veřejné komentáře od uživatelů"
+comments: CommentSelection!
+
+"Tagy pro zvýraznění vybraných nabídek"
+tags: [Tag!]! @sessionDependent
+
+"Zdali aktuální uživatel již viděl nabídku"
+wasSeen: Boolean! @sessionDependent
+}
+
+"""
+Abstraktní jednoduchá nabídka - obyčejná nabídka nebo aukce
+"""
+interface ListingSimple implements Listing {
+"ID nabídky přidělené od Nemovizor.cz (unikátní pro Nemovizor.cz)"
+listingId: ID!
+
+"ID nabídky přidělené uživatelem (unikátní pro firmu)"
+customId: ID
+
+"Adresa s detailem nabídky na Nemovizor.cz"
+url: Url!
+
+"Titulek"
+title(
+lang: Language! = CS
+): String!
+
+"Detailní popis"
+description(
+lang: Language! = CS
+): String!
+
+"Profil prodávajícího"
+seller: Seller
+
+"Prezentace z grafických položek"
+slideshow(
+linear: Boolean = false
+): SlideSelection!
+
+"Všechny grafické položky"
+figures: FigureSelection!
+
+"Fotky"
+photos: PhotoSelection!
+
+"Videa"
+videos: VideoSelection!
+
+"Půdorysy"
+floorPlans: FloorPlanSelection!
+
+"Prohlídka matterport"
+matterport: Matterport
+
+"Veřejné komentáře od uživatelů"
+comments: CommentSelection!
+
+"Tagy pro zvýraznění vybraných nabídek"
+tags: [Tag!]! @sessionDependent
+
+"Zdali aktuální uživatel již viděl nabídku"
+wasSeen: Boolean! @sessionDependent
+
+"Nabízená nemovitost"
+estate: Estate!
+
+"Typ služby"
+serviceType: ServiceType!
+
+"Doplňkové informace specifické pro typ služby"
+serviceTypeInfo: ServiceTypeInfo!
+
+"Informace o prohlídce"
+tourNote(
+lang: Language! = CS
+): String!
+
+"Typ vlastnictví"
+ownershipType: OwnershipType!
+
+"Anuita, povinná pro ownershipType::COOPERATIVE"
+annuity: MonetaryValue
+}
+
+"""
+Bod - reprezentace bodu na mapě
+"""
+interface Point {
+gps: Gps!
+}
+
+"""
+Bod nabídky - bod, který představuje nabídku
+"""
+interface PointListing implements Point {
+gps: Gps!
+listing: Listing!
+}
+
+"""
+Prodávající - informace o vlastníkovi inzerátu
+"""
+interface Seller {
+sellerId: ID!
+listings: ListingSelection!
+}
+
+"""
+Profesionální prodávající - prodávající z prostředí realitních kanceláří
+"""
+interface SellerCorporate implements Seller {
+sellerId: ID!
+listings: ListingSelection!
+name: String!
+description(
+lang: Language! = CS
+): String!
+email: EmailAddress!
+phone: PhoneNumber!
+website: Url
+photo: Photo!
+slideshow(
+linear: Boolean = false
+): SlideSelection!
+figures: FigureSelection!
+photos: PhotoSelection!
+videos: VideoSelection!
+subordinates: SellerStructuralSelection! @loggedIn @auth(level: [OWNER,COWORKER])
+}
+
+"""
+Prodávající spadající pod Company - patřící do struktury společnosti
+"""
+interface SellerStructural implements Seller & SellerCorporate {
+sellerId: ID!
+listings: ListingSelection!
+name: String!
+description(
+lang: Language! = CS
+): String!
+email: EmailAddress!
+phone: PhoneNumber!
+website: Url
+photo: Photo!
+slideshow(
+linear: Boolean = false
+): SlideSelection!
+figures: FigureSelection!
+photos: PhotoSelection!
+videos: VideoSelection!
+subordinates: SellerStructuralSelection! @loggedIn @auth(level: [OWNER,COWORKER])
+customId: ID
+supervisor: SellerCorporate! @loggedIn @auth(level: [OWNER,COWORKER])
+}
+
+"""
+Stránka prezentace
+"""
+interface Slide {
+index: Int! @intConstraint(min: 0)
+}
+
+"""
+Vybraný prodávající - neveřejné údaje prodávajícího
+"""
+interface ViewerSeller {
+"Veřejný profil prodávajícího"
+seller: Seller!
+
+"Vyhledání inzerátu dle ID"
+listing(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [OWNER,COWORKER])
+): ViewerListing!
+
+"Vyhledání inzerátu dle customID"
+listingByCustomId(
+customId: ID!
+): ViewerListing!
+
+"Seznam inzerátů aktuálního prodávajícího"
+listings(
+filter: ListingFilter! = {searchProjects:true,location:{topLeft:{lat:55.0,lng:10.0},bottomRight:{lat:45.0,lng:20.0}},listingType:null,serviceType:null,amenitySimple:null,material:null,condition:null,energyEfficiency:null,energyCertificate:null,ownershipType:null,estateType:null,features:null,amenity:null,multimedia:null,price:null,usableArea:null,landArea:null,constructionYear:null}
+): ViewerListingSelection!
+
+"Seznam notifikací pro aktuálního prodávajícího"
+notifications: NotificationSelection!
+}
+
+"""
+Adapter přístup - přístupové údaje pro SReality adaptér
+"""
+type AdapterAccess {
+clientId: Int!
+password: String!
+swKey: String!
+}
+
+"""
+Adresa - plné zobrazení adresy
+"""
+type Address @objectConstraint(atLeastOne: ["dscNumber","eviNumber"]) {
+country: Country!
+cityName: String!
+cityPartName: String
+postalCode: String!
+streetName: String
+dscNumber: String
+eviNumber: String
+oriNumber: String
+lat: Float!
+lng: Float!
+ruianCode: Int!
+blur: AddressBlur!
+blurBoundary: Json
+region: PricingRegion!
+}
+
+"""
+Adresa v detailu nabídky - položky nabývají hodnoty null v případě rozostření adresy
+"""
+type AddressBlurred {
+country: Country!
+cityName: String!
+cityPartName: String
+postalCode: String
+streetName: String
+dscNumber: String
+eviNumber: String
+oriNumber: String
+lat: Float
+lng: Float
+ruianCode: Int
+blurBoundary: Json
+}
+
+"""
+Doplňující informace pro byty
+"""
+type ApartmentInfo {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency!
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate!
+
+"Stav budovy"
+condition: Condition!
+
+"Základní stavební materiál budovy"
+material: Material!
+
+"Umístění budovy"
+placement: Placement!
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!]!
+
+"Výška stropů"
+ceilingHeight: Float!
+
+"Užítná plocha"
+usableArea: Float!
+
+"Rok výstavby"
+constructionYear: Int!
+
+"Rok kolaudace"
+acceptanceYear: Int!
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!]!
+
+"Počet pokojů"
+roomCount: Int!
+
+"Plocha balkonu"
+balconyArea: Float
+
+"Plocha terasy"
+terraceArea: Float
+
+"Plocha lodžie"
+loggiaArea: Float
+
+"Plocha sklepu"
+cellarArea: Float
+
+"Plocha bazénu"
+poolArea: Float
+
+"Plocha sauny"
+saunaArea: Float
+
+"Plocha posilovny/tělocvičny"
+gymArea: Float
+
+"Plocha prádelny"
+laundryRoomArea: Float
+
+"Plocha sušárny"
+dryerRoomArea: Float
+
+"Dostupné vybavení"
+amenity: [Amenity!]!
+
+"Typ bytu"
+type: ApartmentType!
+
+"Číslo bytu"
+apartmentNumber: String!
+
+"Číslo podlaží"
+floorNumber: Int!
+
+"Speciální klasifikace bytu"
+specialClass: [ApartmentSpecialType!]!
+
+"Funkce sdílených prostor"
+sharedSpace: [SharedSpace!]!
+}
+
+"""
+Nabídka typu aukce
+"""
+type Auction implements Listing & ListingSimple {
+"ID nabídky přidělené od Nemovizor.cz (unikátní pro Nemovizor.cz)"
+listingId: ID!
+
+"ID nabídky přidělené uživatelem (unikátní pro firmu)"
+customId: ID
+
+"Adresa s detailem nabídky na Nemovizor.cz"
+url: Url!
+
+"Titulek"
+title(
+lang: Language! = CS
+): String!
+
+"Detailní popis"
+description(
+lang: Language! = CS
+): String!
+
+"Profil prodávajícího"
+seller: Seller
+
+"Prezentace z grafických položek"
+slideshow(
+linear: Boolean = false
+): SlideSelection!
+
+"Všechny grafické položky"
+figures: FigureSelection!
+
+"Fotky"
+photos: PhotoSelection!
+
+"Videa"
+videos: VideoSelection!
+
+"Půdorysy"
+floorPlans: FloorPlanSelection!
+
+"Prohlídka matterport"
+matterport: Matterport
+
+"Veřejné komentáře od uživatelů"
+comments: CommentSelection!
+
+"Tagy pro zvýraznění vybraných nabídek"
+tags: [Tag!]! @sessionDependent
+
+"Zdali aktuální uživatel již viděl nabídku"
+wasSeen: Boolean! @sessionDependent
+
+"Typ služby"
+serviceType: ServiceType!
+
+"Doplňkové informace specifické pro typ služby"
+serviceTypeInfo: ServiceTypeInfo!
+
+"Nabízená nemovitost"
+estate: Estate!
+
+"Informace o prohlídce"
+tourNote(
+lang: Language! = CS
+): String!
+
+"Typ vlastnictví"
+ownershipType: OwnershipType!
+
+"Anuita, povinná pro ownershipType::COOPERATIVE"
+annuity: MonetaryValue
+
+"Vyvolávací cena"
+startingPrice: Price!
+
+"Cena určená odhadcem"
+estimatedPrice: Price
+
+"Dražební jistota"
+deposit: MonetaryValue!
+
+"Informace ke složení jistoty"
+depositNote(
+lang: Language! = CS
+): String!
+
+"Čas konání dražby"
+eventDate: DateTime!
+
+"Typ konání dražby"
+locationType: AuctionLocationType!
+
+"Adresa konání dražby, povinná pro LocationType = ADDRESS"
+locationAddress: Address
+
+"Informace k místu konání dražby, povinná pro LocationType = ONLINE"
+locationNote(
+lang: Language! = CS
+): String!
+
+"Hodnota minimálního příhozu"
+minBid: Float!
+
+"Aukce dobrovolná / nedobrovolná"
+voluntary: Boolean!
+
+"Zdali je možno uplatnit předražek"
+overbid: Boolean!
+}
+
+"""
+Makléř - reprezentace profilu makléře
+"""
+type Broker implements Seller & SellerCorporate & SellerStructural {
+sellerId: ID!
+listings: ListingSelection!
+name: String!
+description(
+lang: Language! = CS
+): String!
+email: EmailAddress!
+phone: PhoneNumber!
+website: Url
+photo: Photo!
+slideshow(
+linear: Boolean = false
+): SlideSelection!
+figures: FigureSelection!
+photos: PhotoSelection!
+videos: VideoSelection!
+subordinates: SellerStructuralSelection! @loggedIn @auth(level: [OWNER,COWORKER])
+supervisor: SellerCorporate! @loggedIn @auth(level: [OWNER,COWORKER])
+customId: ID
+company: Company!
+ico: String
+}
+
+"""
+Reprezentace výběru makléřů
+"""
+type BrokerSelection {
+"Jednotlivé položky výběru"
+items(
+sort: SellerSort! = RELEVANCE
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Broker!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Veřejný komentář pod nabídkou
+"""
+type Comment {
+commentId: ID!
+content: String!
+replies: CommentSelection!
+isOfficial: Boolean!
+created: DateTime!
+}
+
+"""
+Reprezentace výběru komentářů
+"""
+type CommentSelection {
+"Jednotlivé položky výběru"
+items(
+sort: CommentSort! = NEWEST
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Comment!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Doplňující informace pro komerční prostory
+"""
+type CommercialInfo {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency!
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate!
+
+"Stav budovy"
+condition: Condition!
+
+"Základní stavební materiál budovy"
+material: Material!
+
+"Umístění budovy"
+placement: Placement!
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!]!
+
+"Výška stropů"
+ceilingHeight: Float!
+
+"Užítná plocha"
+usableArea: Float!
+
+"Rok výstavby"
+constructionYear: Int!
+
+"Rok kolaudace"
+acceptanceYear: Int!
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!]!
+
+"Typ komerčního prostoru"
+type: CommercialType!
+
+"Vybavení komerčních prostor"
+equipment: [Equipment!]!
+
+"Třída kancelářských prostor"
+officeClass: OfficeClass
+
+"Třida skladu"
+warehouseClass: WarehouseClass
+
+"Plocha obchodu"
+storeArea: Float
+
+"Plocha kanceláří"
+officeArea: Float
+
+"Plocha skladu"
+warehouseArea: Float
+
+"Plocha výroby"
+productionArea: Float
+
+"Únosnost podlah (kg)"
+loadBearingCapacity: Int
+
+"Rozestup mezi sloupy (m)"
+columnSpacing: Int
+}
+
+"""
+Firma - reprezentace profilu realitní kanceláře
+"""
+type Company implements Seller & SellerCorporate {
+sellerId: ID!
+listings: ListingSelection!
+name: String!
+description(
+lang: Language! = CS
+): String!
+email: EmailAddress!
+phone: PhoneNumber!
+website: Url
+photo: Photo!
+slideshow(
+linear: Boolean = false
+): SlideSelection!
+figures: FigureSelection!
+photos: PhotoSelection!
+videos: VideoSelection!
+subordinates: SellerStructuralSelection! @loggedIn @auth(level: [OWNER,COWORKER])
+brokers: BrokerSelection!
+offices: OfficeSelection!
+headquarters: Address!
+}
+
+"""
+Výsledek operace přijmutí pozvánky na připojení prodávajícího
+"""
+type CompanyAcceptInvitationPayload {
+subject: Seller!
+}
+
+"""
+Výsledek operace přidání prodávajícího
+"""
+type CompanyAddSellerPayload {
+result: SellerStructural!
+}
+
+"""
+Výsledek operace editace prodávajícího
+"""
+type CompanyEditSellerPayload {
+subject: SellerStructural!
+}
+
+"""
+Výsledek operace odeslání pozvánky na připojení prodávajícího
+"""
+type CompanyInviteUserPayload {
+subject: Seller!
+}
+
+"""
+Výsledek operace přesunutí prodávajícího ve společnosti
+"""
+type CompanyMoveSellerPayload {
+subject: SellerStructural!
+oldParentId: ID!
+newParentId: ID!
+}
+
+"""
+Výsledek operace odstranění prodávajícího ze společnosti
+"""
+type CompanyRemoveSellerPayload {
+parent: Seller!
+}
+
+"""
+Reprezentace výběru realitních kanceláří
+"""
+type CompanySelection {
+"Jednotlivé položky výběru"
+items(
+sort: SellerSort! = RELEVANCE
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Company!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Nemovitost - popis nemovitosti
+"""
+type Estate {
+"Typ nemovitosti"
+type: EstateType!
+
+"Doplňkové informace specifické pro typ nemovitosti"
+typeInfo: EstateTypeInfo!
+
+"Adresy"
+address: AddressBlurred!
+
+"Plné zobrazení adresy"
+fullAddress: Address! @auth(level: [OWNER,COWORKER])
+
+"Dostupnost elektřiny"
+electricity: [Electricity!]!
+
+"Dostupnost plynu"
+gas: [Gas!]!
+
+"Dostupnost vody"
+water: [Water!]!
+
+"Typ vytápění"
+heating: [Heating!]!
+
+"Typ odpadu"
+waste: [Waste!]!
+
+"Typ přístupové cesty"
+road: [Road!]!
+
+"Telekomunikační sítě"
+connectivity: [Connectivity!]!
+
+"Zákonná ochrana"
+lawProtection: LawProtection!
+
+"Informace o věcných břemenech"
+servitude: NoteBoolean!
+
+"Orientace nemovitosti"
+orientation: CardinalDirection
+
+"Body zájmu"
+pointsOfInterest: [PointOfInterest!]!
+}
+
+type EstateTypeStats {
+apartmentCount: Int!
+houseCount: Int!
+landCount: Int!
+garageCount: Int!
+commercialCount: Int!
+}
+
+"""
+Výsledek operace odstranění Figure
+"""
+type FigureRemovePayload {
+parentListing: Listing
+parentSeller: Seller
+}
+
+"""
+Reprezentace výběru grafických položek
+"""
+type FigureSelection {
+"Jednotlivé položky výběru"
+items(
+sort: FigureSort! = DEFAULT
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Figure!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Výsledek operace přidání popisku k Figure
+"""
+type FigureSetLocalizationPayload {
+subject: Figure
+}
+
+type FloorPlan implements Figure {
+"ID grafiky přidělené od Nemovizor.cz (unikátní pro Nemovizor.cz)"
+figureId: ID!
+
+"ID grafiky přidělené uživatelem (unikátní pro firmu)"
+customId: ID
+
+"Url na soubor"
+url: Url!
+
+"Popis obsahu (alt)"
+description(
+lang: Language! = CS
+): String!
+
+size: Int!
+}
+
+"""
+Reprezentace výběru půdorysů
+"""
+type FloorPlanSelection {
+"Jednotlivé položky výběru"
+items(
+sort: FigureSort! = DEFAULT
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [FloorPlan!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Reprezentace výběru obsahu frontpage
+"""
+type FrontpageContentSelection {
+"Jednotlivé položky výběru"
+items(
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [FrontpageContent!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Nastavení a obsah řádku na frontpage
+"""
+type FrontpageRow {
+title(
+lang: Language! = CS
+): String!
+description(
+lang: Language! = CS
+): String!
+index: Int!
+size: FrontpageRowSize!
+content: FrontpageContentSelection!
+}
+
+"""
+Reprezentace výběru frontpage řádků
+"""
+type FrontpageRowSelection {
+"Jednotlivé položky výběru"
+items(
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [FrontpageRow!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Doplňující informace pro garáže a ostatní nemovitosti
+"""
+type GarageInfo {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency!
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate!
+
+"Stav budovy"
+condition: Condition!
+
+"Základní stavební materiál budovy"
+material: Material!
+
+"Umístění budovy"
+placement: Placement!
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!]!
+
+"Výška stropů"
+ceilingHeight: Float!
+
+"Užítná plocha"
+usableArea: Float!
+
+"Rok výstavby"
+constructionYear: Int!
+
+"Rok kolaudace"
+acceptanceYear: Int!
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!]!
+
+"Typ objektu"
+type: GarageType!
+}
+
+"""
+Gps type - latitude and longitude.
+"""
+type Gps {
+lat: Float! @floatConstraint(min: -90.0, max: 90.0)
+lng: Float! @floatConstraint(min: -180.0, max: 180.0)
+}
+
+"""
+Doplňující informace pro domy
+"""
+type HouseInfo {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency!
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate!
+
+"Stav budovy"
+condition: Condition!
+
+"Základní stavební materiál budovy"
+material: Material!
+
+"Umístění budovy"
+placement: Placement!
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!]!
+
+"Výška stropů"
+ceilingHeight: Float!
+
+"Užítná plocha"
+usableArea: Float!
+
+"Rok výstavby"
+constructionYear: Int!
+
+"Rok kolaudace"
+acceptanceYear: Int!
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!]!
+
+"Počet pokojů"
+roomCount: Int!
+
+"Plocha balkonu"
+balconyArea: Float
+
+"Plocha terasy"
+terraceArea: Float
+
+"Plocha lodžie"
+loggiaArea: Float
+
+"Plocha sklepu"
+cellarArea: Float
+
+"Plocha bazénu"
+poolArea: Float
+
+"Plocha sauny"
+saunaArea: Float
+
+"Plocha posilovny/tělocvičny"
+gymArea: Float
+
+"Plocha prádelny"
+laundryRoomArea: Float
+
+"Plocha sušárny"
+dryerRoomArea: Float
+
+"Dostupné vybavení"
+amenity: [Amenity!]!
+
+"Typ domu"
+type: HouseType!
+
+"Plocha pozemku"
+landArea: Float!
+}
+
+"""
+Soukromá osoba - reprezentace profilu soukromé osoby
+"""
+type Individual implements Seller {
+sellerId: ID!
+listings: ListingSelection!
+name: String!
+email: EmailAddress!
+phone: PhoneNumber!
+}
+
+"""
+Výsledek operace přidání soukromého prodávajícího
+"""
+type IndividualAddPayload {
+result: Seller!
+}
+
+"""
+Výsledek operace editace soukromého prodávajícího
+"""
+type IndividualEditPayload {
+subject: Seller!
+}
+
+"""
+Doplňující informace pro pozemky
+"""
+type LandInfo {
+"Typ pozemku"
+type: LandType!
+
+"Plocha pozemku"
+landArea: Float!
+}
+
+"""
+Výsledek operace přidání veřejného komentáře pod nabídku
+"""
+type ListingAddCommentPayload {
+subject: Listing!
+result: Comment!
+}
+
+"""
+Výsledek operace přidání FloorPlan k nabídce
+"""
+type ListingAddFloorPlanPayload {
+subject: Listing!
+result: FloorPlan!
+}
+
+"""
+Výsledek operace přidání Matterport k nabídce
+"""
+type ListingAddMatterportPayload {
+subject: Listing!
+result: Matterport!
+}
+
+"""
+Výsledek operace přidání nabídky
+"""
+type ListingAddPayload {
+result: Listing!
+}
+
+"""
+Výsledek operace přidání Photo k nabídce
+"""
+type ListingAddPhotoPayload {
+subject: Listing!
+result: Photo!
+}
+
+"""
+Výsledek operace přidání soukromé rekace na nabídku
+"""
+type ListingAddReactionPayload {
+subject: Listing!
+}
+
+"""
+Výsledek operace přidání nabídky do existujícího projektu
+"""
+type ListingAddToProjectPayload {
+subject: Project!
+result: ListingSimple!
+}
+
+"""
+Výsledek operace přidání Video k nabídce
+"""
+type ListingAddVideoPayload {
+subject: Listing!
+result: Video!
+}
+
+"""
+Výsledek operace editace nabídky
+"""
+type ListingEditPayload {
+subject: Listing!
+}
+
+"""
+Výsledek operace přidání Figure do lineární slideshow
+"""
+type ListingLinearSlideshowAddFigurePayload {
+subject: Figure!
+newPosition: Int!
+}
+
+"""
+Výsledek operace změny pořadí Figure v lineární slideshow
+"""
+type ListingLinearSlideshowMoveFigurePayload {
+subject: Figure!
+oldPosition: Int!
+newPosition: Int!
+}
+
+"""
+Výsledek operace odstranění Figure z lineární slideshow
+"""
+type ListingLinearSlideshowRemoveFigurePayload {
+subject: Figure!
+oldPosition: Int!
+}
+
+"""
+Reprezentace výběru nabídek
+"""
+type ListingSelection {
+"Jednotlivé položky výběru"
+items(
+sort: ListingSort! = RELEVANCE
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Listing!]!
+
+"Počet položek ve výběru"
+count: Int!
+
+estateTypeStats: EstateTypeStats!
+serviceTypeStats: ServiceTypeStats!
+listingTypeStats: ListingTypeStats!
+}
+
+"""
+Výsledek operace změny stavu nabídky
+"""
+type ListingSetStatePayload {
+subject: Listing!
+oldState: ListingState!
+newState: ListingState!
+paymentSecret(
+anonymous: Boolean = false
+): String
+}
+
+type ListingTypeStats {
+offerCount: Int!
+auctionCount: Int!
+projectCount: Int!
+}
+
+type Location {
+type: String!
+viewport: Viewport!
+regionName: String!
+districtName: String
+cityName: String
+cityPartName: String
+streetName: String
+}
+
+type Matterport implements Figure {
+"ID grafiky přidělené od Nemovizor.cz (unikátní pro Nemovizor.cz)"
+figureId: ID!
+
+"ID grafiky přidělené uživatelem (unikátní pro firmu)"
+customId: ID
+
+"Url na soubor"
+url: Url!
+
+"Popis obsahu (alt)"
+description(
+lang: Language! = CS
+): String!
+}
+
+"""
+Peněžní hodnota - struktura hodnoty a měny
+"""
+type MonetaryValue {
+value: Float!
+currency: Currency!
+}
+
+type MoveListingFigurePayload {
+result: Broker!
+}
+
+"""
+Root type pro write operace Nemovizor API
+"""
+type Mutation {
+"Přidání Listing"
+listingAdd(
+input: ListingInput!
+): ListingAddPayload! @loggedIn
+
+"Přidání Listing k již existujícímu projektu"
+listingAddToProject(
+projectId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Project"]) @auth(level: [OWNER,SUPERVISOR])
+input: ListingInput!
+): ListingAddToProjectPayload! @loggedIn
+
+"""
+Změna stavu Listing
+
+- Defaultně je nabídka ve stavu DRAFT, což značí aktivní ale nepublikovanou nabídku.
+- Publikování inzerátu je změna stavu na ACTIVE, při publikování je provedena kontrola zda jsou vyplněné všechny položky (např. počet fotek).
+- Odstranění inzerátu je změna stavu na FINISHED nebo CANCELLED.
+- Stav PUBLISHED nelze manuálně nastavit. Na tento stav je nabídka přepnuta po nevydařené platbě za inzerci.
+
+Parametr publishLength nastavuje maximální délku publikování.
+Je použit pouze pro korporátní prodávající a pokud je zvolený stav ACTIVE.
+Při opakovaném volání je vždy stará hodnota přepsána novou (nedochází k aditivnímu prodlužování).
+Po překročení maximální délky je nabídka automaticky přepnuta do stavu FINISHED.
+"""
+listingSetState(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [OWNER,SUPERVISOR])
+state: ListingState!
+publishLength: ListingPublishLength! = UNLIMITED
+): ListingSetStatePayload! @loggedIn
+
+"Úprava Listing"
+listingEdit(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [OWNER,SUPERVISOR])
+input: ListingInputEdit!
+): ListingEditPayload! @loggedIn
+
+"""
+Přidání Photo k Listing
+
+- Url fotky musí být url již nahraného souboru na Nemovizor file storage (viz Query::uploadLink).
+"""
+listingAddPhoto(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [OWNER,SUPERVISOR])
+photoUrl: Url!
+customId: ID = null @stringConstraint(minLength: 1, maxLength: 50)
+): ListingAddPhotoPayload! @loggedIn
+
+"""
+Přidání Video k Listing
+
+- Url videa musí být url již nahraného souboru na Nemovizor file storage (viz Query::uploadLink).
+"""
+listingAddVideo(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [OWNER,SUPERVISOR])
+videoUrl: Url!
+customId: ID = null @stringConstraint(minLength: 1, maxLength: 50)
+): ListingAddVideoPayload! @loggedIn
+
+"""
+Přidání FloorPlan k Listing
+
+- Url půdorysu musí být url již nahraného souboru na Nemovizor file storage (viz Query::uploadLink).
+"""
+listingAddFloorPlan(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [OWNER,SUPERVISOR])
+floorPlanUrl: Url!
+customId: ID = null @stringConstraint(minLength: 1, maxLength: 50)
+): ListingAddFloorPlanPayload! @loggedIn
+
+"""
+Přidání Matterport k Listing
+
+- Url prohlídky může být libovolná url s dostupnou prohlídkou.
+"""
+listingAddMatterport(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [OWNER,SUPERVISOR])
+matterportUrl: Url!
+customId: ID = null @stringConstraint(minLength: 1, maxLength: 50)
+): ListingAddMatterportPayload! @loggedIn
+
+"""
+Přidání Figure do lineární slideshow
+
+- Pokud není nastaven argument position, pak je Figure vložena na konec.
+- Vyhodí error pokud Figure v lineární slideshow již existuje.
+- Vyhodí error pokud position je větší než počet fotek v lineání slideshow.
+"""
+listingLinearSlideshowAddFigure(
+figureId: ID! @possibleTypes(abstractType: "Figure", concreteTypes: ["Photo","Video","FloorPlan","Matterport"]) @auth(level: [OWNER,SUPERVISOR])
+position: Int = null @intConstraint(min: 0)
+): ListingLinearSlideshowAddFigurePayload! @loggedIn
+
+"""
+Změna pořadí Figure v lineární slideshow
+
+- Vyhodí error pokud position je větší než počet fotek v lineání slideshow.
+"""
+listingLinearSlideshowMoveFigure(
+figureId: ID! @possibleTypes(abstractType: "Figure", concreteTypes: ["Photo","Video","FloorPlan","Matterport"]) @auth(level: [OWNER,SUPERVISOR])
+position: Int! @intConstraint(min: 0)
+): ListingLinearSlideshowMoveFigurePayload! @loggedIn
+
+"""
+Odstranění Figure z lineární slideshow
+
+- Figure zůstane stále dostupná v klasické slideshow.
+"""
+listingLinearSlideshowRemoveFigure(
+figureId: ID! @possibleTypes(abstractType: "Figure", concreteTypes: ["Photo","Video","FloorPlan","Matterport"]) @auth(level: [OWNER,SUPERVISOR])
+): ListingLinearSlideshowRemoveFigurePayload! @loggedIn
+
+"Přidání veřejného komentáře k nabídce"
+listingAddComment(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [PUBLIC])
+content: String!
+commentId: ID = null
+): ListingAddCommentPayload! @loggedIn
+
+"Přidá soukromou reakci k nabídce"
+listingAddReaction(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [PUBLIC])
+content: String!
+email: EmailAddress!
+phone: PhoneNumber!
+): ListingAddReactionPayload!
+
+"Přidá soukromou reakci k nabídce"
+reactionReply(
+reactionId: ID! @possibleTypes(abstractType: "Reaction", concreteTypes: ["Reaction"]) @auth(level: [OWNER,SUPERVISOR])
+content: String!
+): ReactionReplyPayload! @loggedIn
+
+"Přidá soukromou reakci k nabídce"
+reactionClientReply(
+reactionId: ID! @possibleTypes(abstractType: "Reaction", concreteTypes: ["Reaction"])
+content: String!
+secret: String!
+): ReactionClientReplyPayload!
+
+"""
+Přidání Photo k Seller
+
+- Url fotky musí být url již nahraného souboru na Nemovizor file storage (viz Query::uploadLink).
+"""
+sellerAddPhoto(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+photoUrl: Url!
+customId: ID = null @stringConstraint(minLength: 1, maxLength: 50)
+): SellerAddPhotoPayload! @loggedIn
+
+"""
+Přidání Video k Seller
+
+- Url videa musí být url již nahraného souboru na Nemovizor file storage (viz Query::uploadLink).
+"""
+sellerAddVideo(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+videoUrl: Url!
+customId: ID = null @stringConstraint(minLength: 1, maxLength: 50)
+): SellerAddVideoPayload! @loggedIn
+
+"Označení Photo jako primární fotogafie"
+sellerSetProfilePhoto(
+sellerId: ID! @possibleTypes(abstractType: "SellerStructural", concreteTypes: ["Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+figureId: ID! @possibleTypes(abstractType: "Figure", concreteTypes: ["Photo"]) @auth(level: [OWNER,SUPERVISOR])
+): SellerSetProfilePhotoPayload! @loggedIn
+
+"Nastavení popisu prodávajícího"
+sellerEditDescription(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+description: LocalizationInputEdit!
+): SellerSetDescriptionPayload! @loggedIn
+
+"Nastavení emailu prodávajícího"
+sellerSetEmail(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+email: EmailAddress!
+): SellerSetEmailPayload! @loggedIn
+
+"Nastavení telefonního čísla prodávajícího"
+sellerSetPhone(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+phone: PhoneNumber!
+): SellerSetPhonePayload! @loggedIn
+
+"""
+Nastavení webové stránky prodávajícího
+
+- Lze odstranit nastavením hodnoty null.
+"""
+sellerSetWebsite(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+website: Url
+): SellerSetWebsitePayload! @loggedIn
+
+"Vytvoření nové peněženky pro prodávajícího"
+sellerCreateWallet(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+input: WalletInput!
+): SellerCreateWalletPayload! @loggedIn
+
+"Úprava nastavení peněženky prodávajícího"
+sellerEditWallet(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+input: WalletInputEdit!
+): SellerEditWalletPayload! @loggedIn
+
+"Odstranění peněženky prodávajícího"
+sellerRemoveWallet(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+): SellerRemoveWalletPayload! @loggedIn
+
+"Odstranění Figure"
+figureRemove(
+figureId: ID! @possibleTypes(abstractType: "Figure", concreteTypes: ["Photo","Video","FloorPlan","Matterport"]) @auth(level: [OWNER,SUPERVISOR])
+): FigureRemovePayload! @loggedIn
+
+"Přidání popisku k Figure"
+figureEditLocalization(
+figureId: ID! @possibleTypes(abstractType: "Figure", concreteTypes: ["Photo","Video","FloorPlan","Matterport"]) @auth(level: [OWNER,SUPERVISOR])
+localization: LocalizationInputEdit!
+): FigureSetLocalizationPayload! @loggedIn
+
+"Přidání nového prodávajícího do společnosti"
+companyAddSeller(
+input: SellerStructuralInput!
+parentId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,COWORKER])
+): CompanyAddSellerPayload! @loggedIn
+
+"Úprava základních informací prodávajícího"
+companyEditSeller(
+sellerId: ID @possibleTypes(abstractType: "SellerStructural", concreteTypes: ["Office","Broker"]) @auth(level: [SUPERVISOR])
+input: SellerStructuralInputEdit!
+): CompanyEditSellerPayload! @loggedIn
+
+"Přesun prodejce ve struktuře společnosti"
+companyMoveSeller(
+sellerId: ID! @possibleTypes(abstractType: "SellerStructural", concreteTypes: ["Office","Broker"]) @auth(level: [OWNER,SUPERVISOR])
+parentId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER,COWORKER])
+): CompanyMoveSellerPayload! @loggedIn
+
+"""
+Odstranění prodejce ze společnosti
+
+- Převede všechny nabídky a podřízené na nadřízeného ve struktuře.
+"""
+companyRemoveSeller(
+sellerId: ID! @possibleTypes(abstractType: "SellerStructural", concreteTypes: ["Office","Broker"]) @auth(level: [SUPERVISOR])
+): CompanyRemoveSellerPayload! @loggedIn
+
+"Odeslání pozvánku pro připojení uživatele k danému prodávajícímu"
+companyInviteUser(
+sellerId: ID! @possibleTypes(abstractType: "SellerStructural", concreteTypes: ["Office","Broker"]) @auth(level: [SUPERVISOR])
+): CompanyInviteUserPayload! @loggedIn
+
+"Akceptuje pozvánku a přiřadí aktuálního uživatele"
+companyAcceptInvitation(
+invitationKey: ID!
+): CompanyAcceptInvitationPayload! @loggedIn
+
+"Přidání nového soukromého prodávajícího"
+individualAdd(
+input: SellerIndividualInput!
+): IndividualAddPayload! @loggedIn
+
+"Úprava údajů soukromého prodávajícího"
+individualEdit(
+sellerId: ID @possibleTypes(abstractType: "Seller", concreteTypes: ["Individual"]) @auth(level: [OWNER])
+input: SellerIndividualInputEdit!
+): IndividualEditPayload! @loggedIn
+
+"""
+Vygenerování příhlašovacích údajů pro sreality můstek
+
+- Pokud již přihlašovací údaje pro sellera existují, jsou nahrazeny novými.
+"""
+sellerCreateAdapterAccess(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER])
+): SellerCreateAdapterAccessPayload! @loggedIn
+
+"Deaktivování příhlašovacích údajů pro sreality můstek"
+sellerRemoveAdapterAccess(
+sellerId: ID! @possibleTypes(abstractType: "SellerCorporate", concreteTypes: ["Company","Office","Broker"]) @auth(level: [OWNER])
+): SellerRemoveAdapterAccessPayload! @loggedIn
+
+"Nastavení preferovaného jazyka pro aktuálního uživatele"
+userSetPreferredLanguage(
+lang: Language!
+): UserSetPreferredLanguagePayload! @loggedIn
+
+"Nastavení způsobu doručování notifikací pro aktuálního uživatele"
+userSetNotificationPlatforms(
+notificationPlatforms: [NotificationPlatform!]! @listConstraint(unique: true)
+): UserSetNotificationPlatformsPayload! @loggedIn
+}
+
+"""
+Hodnota Ano/Ne společně s vysvětlením
+"""
+type NoteBoolean {
+value: Boolean!
+note(
+lang: Language! = CS
+): String
+}
+
+"""
+Upozornění - zprávy pro uživatele
+"""
+type Notification {
+message(
+lang: Language! = CS
+): String!
+destination: String
+}
+
+"""
+Reprezentace výběru notifikací
+"""
+type NotificationSelection {
+"Jednotlivé položky výběru"
+items(
+sort: NotificationSort! = NEWEST
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Notification!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Standardní nabídka
+"""
+type Offer implements Listing & ListingSimple {
+"ID nabídky přidělené od Nemovizor.cz (unikátní pro Nemovizor.cz)"
+listingId: ID!
+
+"ID nabídky přidělené uživatelem (unikátní pro firmu)"
+customId: ID
+
+"Adresa s detailem nabídky na Nemovizor.cz"
+url: Url!
+
+"Titulek"
+title(
+lang: Language! = CS
+): String!
+
+"Detailní popis"
+description(
+lang: Language! = CS
+): String!
+
+"Profil prodávajícího"
+seller: Seller
+
+"Prezentace z grafických položek"
+slideshow(
+linear: Boolean = false
+): SlideSelection!
+
+"Všechny grafické položky"
+figures: FigureSelection!
+
+"Fotky"
+photos: PhotoSelection!
+
+"Videa"
+videos: VideoSelection!
+
+"Půdorysy"
+floorPlans: FloorPlanSelection!
+
+"Prohlídka matterport"
+matterport: Matterport
+
+"Veřejné komentáře od uživatelů"
+comments: CommentSelection!
+
+"Tagy pro zvýraznění vybraných nabídek"
+tags: [Tag!]! @sessionDependent
+
+"Zdali aktuální uživatel již viděl nabídku"
+wasSeen: Boolean! @sessionDependent
+
+"Typ služby"
+serviceType: ServiceType!
+
+"Doplňkové informace specifické pro typ služby"
+serviceTypeInfo: ServiceTypeInfo!
+
+"Nabízená nemovitost"
+estate: Estate!
+
+"Informace o prohlídce"
+tourNote(
+lang: Language! = CS
+): String!
+
+"Typ vlastnictví"
+ownershipType: OwnershipType!
+
+"Anuita, povinná pro ownershipType::COOPERATIVE"
+annuity: MonetaryValue
+
+"Cena"
+price: Price!
+}
+
+"""
+Pobočka - reprezentace profilu pobočky realitní kanceláře
+"""
+type Office implements Seller & SellerCorporate & SellerStructural {
+sellerId: ID!
+listings: ListingSelection!
+name: String!
+description(
+lang: Language! = CS
+): String!
+email: EmailAddress!
+phone: PhoneNumber!
+website: Url
+photo: Photo!
+slideshow(
+linear: Boolean = false
+): SlideSelection!
+figures: FigureSelection!
+photos: PhotoSelection!
+videos: VideoSelection!
+subordinates: SellerStructuralSelection! @loggedIn @auth(level: [OWNER,COWORKER])
+supervisor: SellerCorporate! @loggedIn @auth(level: [OWNER,COWORKER])
+customId: ID
+company: Company!
+headquarters: Address!
+}
+
+"""
+Reprezentace výběru poboček
+"""
+type OfficeSelection {
+"Jednotlivé položky výběru"
+items(
+sort: SellerSort! = RELEVANCE
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Office!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+type Photo implements Figure {
+"ID grafiky přidělené od Nemovizor.cz (unikátní pro Nemovizor.cz)"
+figureId: ID!
+
+"ID grafiky přidělené uživatelem (unikátní pro firmu)"
+customId: ID
+
+"Url na soubor"
+url: Url!
+
+"Popis obsahu (alt)"
+description(
+lang: Language! = CS
+): String!
+
+originalUrl: Url!
+is360: Boolean!
+width: Int!
+height: Int!
+size: Int!
+}
+
+"""
+Reprezentace výběru fotek
+"""
+type PhotoSelection {
+"Jednotlivé položky výběru"
+items(
+sort: FigureSort! = DEFAULT
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Photo!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Spojený bod - bod pro místo s vysokou koncentrací nabídek
+"""
+type PointGrouped implements Point {
+gps: Gps!
+listings: [Listing!]!
+}
+
+"""
+Bod zájmu
+"""
+type PointOfInterest {
+"Typ bodu zájmu"
+type: PointOfInterestType!
+
+"Značky řetězce (relevantní pro SUPERMARKET)"
+brands: [String!]
+
+"Číslo linky (relevantní pro PUBLIC_TRANSPORT)"
+lineNumbers: [String!]
+}
+
+"""
+Bod projektu - bod pro developerský projekt
+"""
+type PointProject implements Point & PointListing {
+gps: Gps!
+listing: Project!
+count: Int!
+}
+
+"""
+Reprezentace výběru bodů
+"""
+type PointSelection {
+items: [Point!]!
+count: Int!
+listingCount: Int!
+blurredListings: [Listing!]!
+}
+
+"""
+Jednoduchý bod - bod, který představuje jednoduchou nerozostrostřenou nabídku
+"""
+type PointSimple implements Point & PointListing {
+gps: Gps!
+listing: ListingSimple!
+}
+
+"""
+Cena - informace o ceně
+"""
+type Price {
+value(
+currency: Currency! = CZK
+unit: PriceUnit! = PROPERTY
+period: PricePeriod = null
+): Float!
+originalValue: Float!
+originalCurrency: Currency!
+originalUnit: PriceUnit!
+originalPeriod: PricePeriod!
+includesVat: Boolean!
+includesCommission: Boolean!
+includesLawService: Boolean!
+
+"Poznámka k ceně"
+note(
+lang: Language! = CS
+): String
+}
+
+"""
+Nabídka typu developerský projekt - seskupení více nabídek
+"""
+type Project implements Listing {
+"ID nabídky přidělené od Nemovizor.cz (unikátní pro Nemovizor.cz)"
+listingId: ID!
+
+"ID nabídky přidělené uživatelem (unikátní pro firmu)"
+customId: ID
+
+"Adresa s detailem nabídky na Nemovizor.cz"
+url: Url!
+
+"Titulek"
+title(
+lang: Language! = CS
+): String!
+
+"Detailní popis"
+description(
+lang: Language! = CS
+): String!
+
+"Profil prodávajícího"
+seller: Seller
+
+"Prezentace z grafických položek"
+slideshow(
+linear: Boolean = false
+): SlideSelection!
+
+"Všechny grafické položky"
+figures: FigureSelection!
+
+"Fotky"
+photos: PhotoSelection!
+
+"Videa"
+videos: VideoSelection!
+
+"Půdorysy"
+floorPlans: FloorPlanSelection!
+
+"Prohlídka matterport"
+matterport: Matterport
+
+"Veřejné komentáře od uživatelů"
+comments: CommentSelection!
+
+"Tagy pro zvýraznění vybraných nabídek"
+tags: [Tag!]! @sessionDependent
+
+"Zdali aktuální uživatel již viděl nabídku"
+wasSeen: Boolean! @sessionDependent
+
+listings(
+filter: ListingFilter! = {searchProjects:true,location:{topLeft:{lat:55.0,lng:10.0},bottomRight:{lat:45.0,lng:20.0}},listingType:null,serviceType:null,amenitySimple:null,material:null,condition:null,energyEfficiency:null,energyCertificate:null,ownershipType:null,estateType:null,features:null,amenity:null,multimedia:null,price:null,usableArea:null,landArea:null,constructionYear:null}
+): ProjectListings!
+viewerListings: ViewerListingSelection! @auth(level: [OWNER,COWORKER])
+saleStartDate: Date!
+}
+
+type ProjectListings {
+satisfiesFilter: ListingSelection!
+other: ListingSelection!
+}
+
+"""
+Root type pro read operace nemovizor API
+"""
+type Query {
+"Vyhledávání v obsahu nemovizoru"
+search(
+value: String!
+): [SearchResult!]!
+
+"Vyhledání inzerátu dle ID"
+listing(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [PUBLIC])
+): Listing!
+
+"Vyhledávání mezi inzeráty"
+listings(
+filter: ListingFilter! = {searchProjects:true,location:{topLeft:{lat:55.0,lng:10.0},bottomRight:{lat:45.0,lng:20.0}},listingType:null,serviceType:null,amenitySimple:null,material:null,condition:null,energyEfficiency:null,energyCertificate:null,ownershipType:null,estateType:null,features:null,amenity:null,multimedia:null,price:null,usableArea:null,landArea:null,constructionYear:null}
+): ListingSelection!
+
+"Body na mapě, pro daný filtr a viewport"
+points(
+filter: ListingFilter! = {searchProjects:true,location:{topLeft:{lat:55.0,lng:10.0},bottomRight:{lat:45.0,lng:20.0}},listingType:null,serviceType:null,amenitySimple:null,material:null,condition:null,energyEfficiency:null,energyCertificate:null,ownershipType:null,estateType:null,features:null,amenity:null,multimedia:null,price:null,usableArea:null,landArea:null,constructionYear:null}
+): PointSelection!
+
+"Vyhledání prodávájícího dle ID"
+seller(
+sellerId: ID! @possibleTypes(abstractType: "Seller", concreteTypes: ["Company","Office","Broker","Individual"])
+): Seller!
+
+"Seznam makléřů kteří inzerují na Nemovizor.cz"
+brokers: BrokerSelection!
+
+"Seznam firem kteří inzerují na Nemovizor.cz"
+companies: CompanySelection!
+
+"Data k zobrazení na úvodní stránce"
+frontpage: FrontpageRowSelection!
+
+"Aktuálně přihlášený uživatel"
+viewer: Viewer! @loggedIn
+}
+
+"""
+Soukromá reakce na nabídku
+"""
+type Reaction {
+reactionId: ID!
+content: String!
+replies: ReactionReplySelection!
+created: DateTime!
+}
+
+"""
+Výsledek operace odepovědi na reakci
+"""
+type ReactionClientReplyPayload {
+result: ReactionReply!
+}
+
+"""
+Odpověď na reakci
+"""
+type ReactionReply {
+content: String!
+fromClient: Boolean!
+created: DateTime!
+}
+
+"""
+Výsledek operace odpovědi na reakci
+"""
+type ReactionReplyPayload {
+subject: Reaction!
+result: ReactionReply!
+}
+
+"""
+Reprezentace výběru odpovědí na reakce
+"""
+type ReactionReplySelection {
+"Jednotlivé položky výběru"
+items(
+sort: ReactionReplySort! = NEWEST
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [ReactionReply!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Reprezentace výběru reakcí
+"""
+type ReactionSelection {
+"Jednotlivé položky výběru"
+items(
+sort: ReactionSort! = NEWEST
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Reaction!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Doplnující informace pro pronájem
+"""
+type RentInfo {
+"Omezení při používání pronajatého objektu"
+restriction: [Restriction!]!
+
+"Datum nastěhování"
+movingInDate: Date!
+
+"Minimální počet pronajatých měsíců"
+minRentLength: Int
+}
+
+"""
+Výsledek operace přidání Photo k prodávajícímu
+"""
+type SellerAddPhotoPayload {
+subject: Seller!
+result: Photo!
+}
+
+"""
+Výsledek operace přidání Video k prodávajícímu
+"""
+type SellerAddVideoPayload {
+subject: Seller!
+result: Video!
+}
+
+"""
+Výsledek operace vytvoření přistupu pro SReality adaptér
+"""
+type SellerCreateAdapterAccessPayload {
+result: AdapterAccess!
+}
+
+"""
+Výsledek operace vytvoření Wallet k prodávajícímu
+"""
+type SellerCreateWalletPayload {
+subject: Seller!
+result: Wallet!
+}
+
+"""
+Výsledek operace přidání Video k prodávajícímu
+"""
+type SellerEditWalletPayload {
+subject: Seller!
+result: Wallet!
+}
+
+"""
+Výsledek operace odstranění přistupu pro SReality adaptér
+"""
+type SellerRemoveAdapterAccessPayload {
+success: Boolean! @deprecated(reason: "This field is redundant and may be replaced with more usable information.")
+}
+
+"""
+Výsledek operace odstranění Wallet od prodávajícího
+"""
+type SellerRemoveWalletPayload {
+subject: Seller!
+}
+
+"""
+Výsledek operace úpravy popisu
+"""
+type SellerSetDescriptionPayload {
+subject: Seller!
+}
+
+"""
+Výsledek operace úpravy emailu
+"""
+type SellerSetEmailPayload {
+subject: Seller!
+}
+
+"""
+Výsledek operace úpravy telefonního čísla
+"""
+type SellerSetPhonePayload {
+subject: Seller!
+}
+
+"""
+Výsledek operace označení Photo jako profilové fotky
+"""
+type SellerSetProfilePhotoPayload {
+subject: Seller!
+photo: Photo!
+}
+
+"""
+Výsledek operace úpravy webové stránky
+"""
+type SellerSetWebsitePayload {
+subject: Seller!
+}
+
+"""
+Reprezentace výběru prodávajích
+"""
+type SellerStructuralSelection {
+"Jednotlivé položky výběru"
+items(
+sort: SellerSort! = RELEVANCE
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [SellerStructural!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+type ServiceTypeStats {
+rentCount: Int!
+transferCount: Int!
+}
+
+type SlideDouble implements Slide {
+index: Int! @intConstraint(min: 0)
+layout: SlideLayout!
+itemOne: Figure!
+itemTwo: Figure!
+}
+
+"""
+Reprezentace výběru slajdů
+"""
+type SlideSelection {
+"Jednotlivé položky výběru"
+items(
+sort: SlideSort! = ORDER
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Slide!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+type SlideSingle implements Slide {
+index: Int! @intConstraint(min: 0)
+item: Figure!
+}
+
+type SlideTriple implements Slide {
+index: Int! @intConstraint(min: 0)
+layout: SlideLayout!
+itemOne: Figure!
+itemTwo: Figure!
+itemThree: Figure!
+}
+
+type Statistics {
+perDay: [StatisticsUnit!]!
+total: StatisticsUnit!
+}
+
+type StatisticsUnit {
+viewCount: Int! @intConstraint(min: 0)
+uniqueVisitorCount: Int! @intConstraint(min: 0)
+}
+
+type Tag {
+type: TagType!
+}
+
+"""
+Transakce - provedená transakce
+"""
+type Transaction {
+amount: Int!
+description: String!
+resultingBalance: Int!
+created: DateTime!
+}
+
+"""
+Doplnující informace pro prodej
+"""
+type TransferInfo {
+"Prodej společnosti"
+withCompany: Boolean!
+}
+
+"""
+Budoucí transakce - nadcházející transakce
+"""
+type UpcomingTransaction {
+amount: Int!
+description: String!
+}
+
+"""
+Výsledek operace změny způsobu doručování notifikací
+"""
+type UserSetNotificationPlatformsPayload {
+oldPlatforms: [NotificationPlatform!]!
+newPlatforms: [NotificationPlatform!]!
+}
+
+"""
+Výsledek operace změny preferovaného jazyka
+"""
+type UserSetPreferredLanguagePayload {
+oldLang: Language!
+newLang: Language!
+}
+
+type Video implements Figure {
+"ID grafiky přidělené od Nemovizor.cz (unikátní pro Nemovizor.cz)"
+figureId: ID!
+
+"ID grafiky přidělené uživatelem (unikátní pro firmu)"
+customId: ID
+
+"Url na soubor"
+url: Url!
+
+"Popis obsahu (alt)"
+description(
+lang: Language! = CS
+): String!
+
+size: Int!
+length: Int!
+}
+
+"""
+Reprezentace výběru videí
+"""
+type VideoSelection {
+"Jednotlivé položky výběru"
+items(
+sort: FigureSort! = DEFAULT
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [Video!]!
+
+"Počet položek ve výběru"
+count: Int!
+}
+
+"""
+Root type pro read operace nemovizor API s přístupem pro aktuálně přihlášeného uživatele
+"""
+type Viewer {
+"Registrovaný email"
+email: EmailAddress!
+
+"Nastavený preferovaný jazyk"
+preferredLanguage: Language!
+
+"Nastavené zdroje notifikací"
+notificationPlatforms: [NotificationPlatform!]!
+
+"Vyhledání prodávajícího dle ID"
+seller(
+sellerId: ID! @possibleTypes(abstractType: "Seller", concreteTypes: ["Company","Office","Broker","Individual"]) @auth(level: [OWNER])
+): ViewerSeller!
+
+"Vyhledání prodávajícího dle custom ID"
+sellerByCustomId(
+customId: ID!
+): ViewerSeller!
+
+"Seznam prodávajících aktuálního uživatele"
+sellers: [ViewerSeller!]!
+
+"Seznam notifikací pro aktuálního uživatele"
+notifications: NotificationSelection!
+
+"Vytvoří link pro upload souboru"
+uploadLink: Url!
+}
+
+"""
+Vybraný prodávající - neveřejné údaje prodávajícího
+"""
+type ViewerIndividual implements ViewerSeller {
+"Veřejný profil prodávajícího"
+seller: Individual!
+
+"Vyhledání inzerátu dle ID"
+listing(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [OWNER])
+): ViewerListing!
+
+"Vyhledání inzerátu dle customID"
+listingByCustomId(
+customId: ID!
+): ViewerListing!
+
+"Seznam inzerátů aktuálního prodávajícího"
+listings(
+filter: ListingFilter! = {searchProjects:true,location:{topLeft:{lat:55.0,lng:10.0},bottomRight:{lat:45.0,lng:20.0}},listingType:null,serviceType:null,amenitySimple:null,material:null,condition:null,energyEfficiency:null,energyCertificate:null,ownershipType:null,estateType:null,features:null,amenity:null,multimedia:null,price:null,usableArea:null,landArea:null,constructionYear:null}
+): ViewerListingSelection!
+
+"Seznam notifikací pro aktuálního prodávajícího"
+notifications: NotificationSelection!
+}
+
+"""
+Vybraná nabídka - neveřejné údaje o nabídce
+"""
+type ViewerListing {
+"Veřejný profil nabídky"
+listing: Listing!
+
+"Stav nabídky"
+state: ListingState!
+
+"Prodávající"
+seller: Seller!
+
+"Soukromé reakce"
+reactions: ReactionSelection!
+
+"Statistiky zobrazení"
+stats(
+from: Date!
+to: Date!
+): Statistics!
+
+"Čas vytvoření"
+created: DateTime!
+
+"Čas poslední úpravy"
+modified: DateTime!
+
+"Čas publikování"
+published: DateTime
+
+"Čas uzavření"
+closed: DateTime
+}
+
+"""
+Reprezentace výběru nabídek
+"""
+type ViewerListingSelection {
+"Jednotlivé položky výběru"
+items(
+sort: ListingSort! = RELEVANCE
+limit: Int! = 10 @intConstraint(min: 0, max: 100)
+offset: Int! = 0 @intConstraint(min: 0)
+): [ViewerListing!]!
+
+"Počet položek ve výběru"
+count: Int!
+
+estateTypeStats: EstateTypeStats!
+serviceTypeStats: ServiceTypeStats!
+listingTypeStats: ListingTypeStats!
+}
+
+"""
+Vybraný prodávající - neveřejné údaje prodávajícího
+"""
+type ViewerSellerCorporate implements ViewerSeller {
+"Veřejný profil prodávajícího"
+seller: SellerCorporate!
+
+"Vyhledání inzerátu dle ID"
+listing(
+listingId: ID! @possibleTypes(abstractType: "Listing", concreteTypes: ["Offer","Auction","Project"]) @auth(level: [OWNER,COWORKER])
+): ViewerListing!
+
+"Vyhledání inzerátu dle customID"
+listingByCustomId(
+customId: ID!
+): ViewerListing!
+
+"Seznam inzerátů aktuálního prodávajícího"
+listings(
+filter: ListingFilter! = {searchProjects:true,location:{topLeft:{lat:55.0,lng:10.0},bottomRight:{lat:45.0,lng:20.0}},listingType:null,serviceType:null,amenitySimple:null,material:null,condition:null,energyEfficiency:null,energyCertificate:null,ownershipType:null,estateType:null,features:null,amenity:null,multimedia:null,price:null,usableArea:null,landArea:null,constructionYear:null}
+): ViewerListingSelection!
+
+"Peněženka ze které aktuální prodávající čerpá"
+wallet: Wallet!
+
+"Seznam notifikací pro aktuálního prodávajícího"
+notifications: NotificationSelection!
+
+"Vygenerované přístupové údaje pro SReality.cz adaptér"
+adapterAccess: AdapterAccess
+}
+
+"""
+Vybraný pohled na mapu určený dvěma body
+"""
+type Viewport {
+"Levý horní roh"
+topLeft: Gps!
+
+"Pravý dolní roh"
+bottomRight: Gps!
+}
+
+"""
+Peněženka - aktuální stav peněženky
+"""
+type Wallet {
+amount: Int!
+upcomingCharges: [UpcomingTransaction!]!
+failedCharges: [UpcomingTransaction!]!
+history(
+limit: Int! @intConstraint(min: 0, max: 100)
+offset: Int! @intConstraint(min: 0)
+): [Transaction!]!
+paymentSecret(
+amount: Int! @intConstraint(min: 50000, max: 10000000)
+): String!
+legalObjectType: LegalObjectType!
+vatRegistered: Boolean!
+dic: String
+email: EmailAddress!
+address: Address!
+}
+
+"""
+Doplnující informace podle typu nemovitosti
+"""
+union EstateTypeInfo = ApartmentInfo | HouseInfo | LandInfo | CommercialInfo | GarageInfo
+
+"""
+Položky zobrazené na frontpage
+"""
+union FrontpageContent = Offer | Auction | Project | Broker | Office | Company
+
+union SearchResult = Offer | Auction | Project | Broker | Office | Company | Location
+
+"""
+Doplnující informace podle typu služby (prodej/pronájem)
+"""
+union ServiceTypeInfo = TransferInfo | RentInfo
+
+"""
+Input adresy pomocí kódu RÚIAN
+"""
+input AddressRuianInput {
+ruianCode: Int! @intConstraint(min: 0)
+blur: AddressBlur!
+}
+
+input AmenityFilter {
+washingMachine: Boolean = null
+dryer: Boolean = null
+fridge: Boolean = null
+freezer: Boolean = null
+dishwasher: Boolean = null
+oven: Boolean = null
+microwave: Boolean = null
+kitchenWorktop: Boolean = null
+inductionCooker: Boolean = null
+cofeeMaker: Boolean = null
+kettle: Boolean = null
+vault: Boolean = null
+television: Boolean = null
+sofa: Boolean = null
+}
+
+"""
+Input pro přidání doplňujících informací pro byty
+"""
+input ApartmentInput {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency!
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate!
+
+"Stav budovy"
+condition: Condition!
+
+"Základní stavební materiál budovy"
+material: Material!
+
+"Umístění budovy"
+placement: Placement!
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!]!
+
+"Výška stropů"
+ceilingHeight: Float! @floatConstraint(min: 0.0)
+
+"Užítná plocha"
+usableArea: Float! @floatConstraint(min: 0.0)
+
+"Rok výstavby"
+constructionYear: Int! @intConstraint(min: 1500, max: 2022)
+
+"Rok kolaudace"
+acceptanceYear: Int! @intConstraint(min: 1500, max: 2022)
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int @intConstraint(min: 1500, max: 2022)
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!]!
+
+"Počet pokojů"
+roomCount: Int! @intConstraint(min: 0)
+
+"Plocha balkonu"
+balconyArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha terasy"
+terraceArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha lodžie"
+loggiaArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha sklepu"
+cellarArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha bazénu"
+poolArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha sauny"
+saunaArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha posilovny/tělocvičny"
+gymArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha prádelny"
+laundryRoomArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha sušárny"
+dryerRoomArea: Float = null @floatConstraint(min: 0.0)
+
+"Dostupné vybavení"
+amenity: [Amenity!]!
+
+"Dostupné vybavení (jednoduchá Sreality.cz verze)"
+amenitySimple: AmenitySimple = null
+
+"Typ bytu"
+type: ApartmentType!
+
+"Číslo bytu"
+apartmentNumber: String!
+
+"Číslo podlaží"
+floorNumber: Int!
+
+"Speciální klasifikace bytu"
+specialClass: [ApartmentSpecialType!]!
+
+"Funkce sdílených prostor"
+sharedSpace: [SharedSpace!]!
+}
+
+"""
+Input pro úpravu doplňujících informací pro byty
+"""
+input ApartmentInputEdit {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency @optional
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate @optional
+
+"Stav budovy"
+condition: Condition @optional
+
+"Základní stavební materiál budovy"
+material: Material @optional
+
+"Umístění budovy"
+placement: Placement @optional
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!] @optional
+
+"Výška stropů"
+ceilingHeight: Float @optional @floatConstraint(min: 0.0)
+
+"Užítná plocha"
+usableArea: Float @optional @floatConstraint(min: 0.0)
+
+"Rok výstavby"
+constructionYear: Int @optional @intConstraint(min: 1500, max: 2022)
+
+"Rok kolaudace"
+acceptanceYear: Int @optional @intConstraint(min: 1500, max: 2022)
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int @intConstraint(min: 1500, max: 2022)
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!] @optional
+
+"Počet pokojů"
+roomCount: Int @optional @intConstraint(min: 0)
+
+"Plocha balkonu"
+balconyArea: Float @floatConstraint(min: 0.0)
+
+"Plocha terasy"
+terraceArea: Float @floatConstraint(min: 0.0)
+
+"Plocha lodžie"
+loggiaArea: Float @floatConstraint(min: 0.0)
+
+"Plocha sklepu"
+cellarArea: Float @floatConstraint(min: 0.0)
+
+"Plocha bazénu"
+poolArea: Float @floatConstraint(min: 0.0)
+
+"Plocha sauny"
+saunaArea: Float @floatConstraint(min: 0.0)
+
+"Plocha posilovny/tělocvičny"
+gymArea: Float @floatConstraint(min: 0.0)
+
+"Plocha prádelny"
+laundryRoomArea: Float @floatConstraint(min: 0.0)
+
+"Plocha sušárny"
+dryerRoomArea: Float @floatConstraint(min: 0.0)
+
+"Dostupné vybavení"
+amenity: [Amenity!] @optional
+
+"Dostupné vybavení (jednoduchá Sreality.cz verze)"
+amenitySimple: AmenitySimple
+
+"Typ bytu"
+type: ApartmentType @optional
+
+"Číslo bytu"
+apartmentNumber: String @optional
+
+"Číslo podlaží"
+floorNumber: Int @optional
+
+"Speciální klasifikace bytu"
+specialClass: [ApartmentSpecialType!] @optional
+
+"Funkce sdílených prostor"
+sharedSpace: [SharedSpace!] @optional
+}
+
+"""
+Input pro přidání Auction
+"""
+input AuctionInput @objectConstraint(exactlyOne: ["rent","transfer"]) {
+"Doplňkové informace specifické pro typ služby"
+rent: RentInput = null
+
+transfer: TransferInput = null
+
+"Nabízená nemovitost"
+estate: EstateInput!
+
+"Informace o prohlídce"
+tourNote: LocalizationInput!
+
+"Typ vlastnictví"
+ownershipType: OwnershipType!
+
+"Anuita, povinná pro ownershipType::COOPERATIVE"
+annuity: MonetaryValueInput = null
+
+"Vyvolávací cena"
+startingPrice: PriceInput!
+
+"Cena určená odhadcem"
+estimatedPrice: PriceInput!
+
+"Dražební jistota"
+deposit: MonetaryValueInput!
+
+"Informace ke složení jistoty"
+depositNote: LocalizationInput!
+
+"Čas konání dražby"
+eventDate: DateTime!
+
+"Typ konání dražby"
+locationType: AuctionLocationType!
+
+"Adresa konání dražby, povinná pro LocationType = ADDRESS"
+locationAddress: AddressRuianInput = null
+
+"Informace k místu konání dražby, povinná pro LocationType = ONLINE"
+locationNote: LocalizationInput!
+
+"Hodnota minimálního příhozu"
+minBid: Float!
+
+"Aukce dobrovolná / nedobrovolná"
+voluntary: Boolean!
+
+"Zdali je možno uplatnit předražek"
+overbid: Boolean!
+}
+
+"""
+Input pro úpravu Auction
+"""
+input AuctionInputEdit @objectConstraint(atMostOne: ["rent","transfer"]) {
+"Doplňkové informace specifické pro typ služby"
+rent: RentInputEdit @optional
+
+transfer: TransferInputEdit @optional
+
+"Nabízená nemovitost"
+estate: EstateInputEdit @optional
+
+"Informace o prohlídce"
+tourNote: LocalizationInputEdit @optional
+
+"Typ vlastnictví"
+ownershipType: OwnershipType @optional
+
+"Anuita, povinná pro ownershipType::COOPERATIVE"
+annuity: MonetaryValueInput
+
+"Vyvolávací cena"
+startingPrice: PriceInput @optional
+
+"Cena určená odhadcem"
+estimatedPrice: PriceInput @optional
+
+"Dražební jistota"
+deposit: MonetaryValueInput @optional
+
+"Informace ke složení jistoty"
+depositNote: LocalizationInputEdit @optional
+
+"Čas konání dražby"
+eventDate: DateTime @optional
+
+"Typ konání dražby"
+locationType: AuctionLocationType @optional
+
+"Adresa konání dražby, povinná pro LocationType = ADDRESS"
+locationAddress: AddressRuianInput
+
+"Informace k místu konání dražby, povinná pro LocationType = ONLINE"
+locationNote: LocalizationInputEdit @optional
+
+"Hodnota minimálního příhozu"
+minBid: Float @optional
+
+"Aukce dobrovolná / nedobrovolná"
+voluntary: Boolean @optional
+
+"Zdali je možno uplatnit předražek"
+overbid: Boolean @optional
+}
+
+"""
+Input pro přidání makléře
+"""
+input BrokerInput {
+name: String!
+description: LocalizationInput!
+email: EmailAddress!
+phone: PhoneNumber!
+website: Url = null
+ico: String = null
+}
+
+"""
+Input pro úpravu makléře
+"""
+input BrokerInputEdit {
+name: String @optional
+description: LocalizationInputEdit @optional
+email: EmailAddress @optional
+phone: PhoneNumber @optional
+website: Url
+ico: String
+}
+
+"""
+Input pro přidání doplňujících informací pro komerční prostory
+"""
+input CommercialInput {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency!
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate!
+
+"Stav budovy"
+condition: Condition!
+
+"Základní stavební materiál budovy"
+material: Material!
+
+"Umístění budovy"
+placement: Placement!
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!]!
+
+"Výška stropů"
+ceilingHeight: Float! @floatConstraint(min: 0.0)
+
+"Užítná plocha"
+usableArea: Float! @floatConstraint(min: 0.0)
+
+"Rok výstavby"
+constructionYear: Int! @intConstraint(min: 1500, max: 2022)
+
+"Rok kolaudace"
+acceptanceYear: Int! @intConstraint(min: 1500, max: 2022)
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int @intConstraint(min: 1500, max: 2022)
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!]!
+
+"Typ komerčního prostoru"
+type: CommercialType!
+
+"Vybavení komerčních prostor"
+equipment: [Equipment!]!
+
+"Třída kancelářských prostor"
+officeClass: OfficeClass = null
+
+"Třida skladu"
+warehouseClass: WarehouseClass = null
+
+"Plocha obchodu"
+storeArea: Float = null
+
+"Plocha kanceláří"
+officeArea: Float = null
+
+"Plocha skladu"
+warehouseArea: Float = null
+
+"Plocha výroby"
+productionArea: Float = null
+
+"Únosnost podlah (kg)"
+loadBearingCapacity: Int = null
+
+"Rozestup mezi sloupy (m)"
+columnSpacing: Int = null
+}
+
+"""
+Input pro úpravu doplňujících informací pro komerční prostory
+"""
+input CommercialInputEdit {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency @optional
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate @optional
+
+"Stav budovy"
+condition: Condition @optional
+
+"Základní stavební materiál budovy"
+material: Material @optional
+
+"Umístění budovy"
+placement: Placement @optional
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!] @optional
+
+"Výška stropů"
+ceilingHeight: Float @optional @floatConstraint(min: 0.0)
+
+"Užítná plocha"
+usableArea: Float @optional @floatConstraint(min: 0.0)
+
+"Rok výstavby"
+constructionYear: Int @optional @intConstraint(min: 1500, max: 2022)
+
+"Rok kolaudace"
+acceptanceYear: Int @optional @intConstraint(min: 1500, max: 2022)
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int @intConstraint(min: 1500, max: 2022)
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!] @optional
+
+"Typ komerčního prostoru"
+type: CommercialType @optional
+
+"Vybavení komerčních prostor"
+equipment: [Equipment!] @optional
+
+"Třída kancelářských prostor"
+officeClass: OfficeClass
+
+"Třida skladu"
+warehouseClass: WarehouseClass
+
+"Plocha obchodu"
+storeArea: Float
+
+"Plocha kanceláří"
+officeArea: Float
+
+"Plocha skladu"
+warehouseArea: Float
+
+"Plocha výroby"
+productionArea: Float
+
+"Únosnost podlah (kg)"
+loadBearingCapacity: Int
+
+"Rozestup mezi sloupy (m)"
+columnSpacing: Int
+}
+
+"""
+Input pro přidání Estate
+"""
+input EstateInput @objectConstraint(exactlyOne: ["apartment","house","land","commercial","garage"]) {
+"Doplňkové informace specifické pro typ nemovitosti"
+apartment: ApartmentInput = null
+
+house: HouseInput = null
+land: LandInput = null
+commercial: CommercialInput = null
+garage: GarageInput = null
+
+"Adresy"
+address: AddressRuianInput!
+
+"Dostupnost elektřiny"
+electricity: [Electricity!]! @listConstraint(unique: true)
+
+"Dostupnost plynu"
+gas: [Gas!]! @listConstraint(unique: true)
+
+"Dostupnost vody"
+water: [Water!]! @listConstraint(unique: true)
+
+"Typ vytápění"
+heating: [Heating!]! @listConstraint(unique: true)
+
+"Typ odpadu"
+waste: [Waste!]! @listConstraint(unique: true)
+
+"Typ přístupové cesty"
+road: [Road!]! @listConstraint(unique: true)
+
+"Telekomunikační sítě"
+connectivity: [Connectivity!]! @listConstraint(unique: true)
+
+"Zákonná ochrana"
+lawProtection: LawProtection!
+
+"Informace o věcných břemenech"
+servitude: NoteBooleanInput!
+
+"Orientace nemovitosti"
+orientation: CardinalDirection = null
+}
+
+"""
+Input pro úpravu Estate
+"""
+input EstateInputEdit @objectConstraint(atMostOne: ["apartment","house","land","commercial","garage"]) {
+"Doplňkové informace specifické pro typ nemovitosti"
+apartment: ApartmentInputEdit @optional
+
+house: HouseInputEdit @optional
+land: LandInputEdit @optional
+commercial: CommercialInputEdit @optional
+garage: GarageInputEdit @optional
+
+"Adresy"
+address: AddressRuianInput @optional
+
+"Dostupnost elektřiny"
+electricity: [Electricity!] @optional @listConstraint(unique: true)
+
+"Dostupnost plynu"
+gas: [Gas!] @optional @listConstraint(unique: true)
+
+"Dostupnost vody"
+water: [Water!] @optional @listConstraint(unique: true)
+
+"Typ vytápění"
+heating: [Heating!] @optional @listConstraint(unique: true)
+
+"Typ odpadu"
+waste: [Waste!] @optional @listConstraint(unique: true)
+
+"Typ přístupové cesty"
+road: [Road!] @optional @listConstraint(unique: true)
+
+"Telekomunikační sítě"
+connectivity: [Connectivity!] @optional @listConstraint(unique: true)
+
+"Zákonná ochrana"
+lawProtection: LawProtection @optional
+
+"Informace o věcných břemenech"
+servitude: NoteBooleanInputEdit @optional
+
+"Orientace nemovitosti"
+orientation: CardinalDirection
+}
+
+input EstateTypeFilter {
+main: [EstateType!]! = [APARTMENT,HOUSE,COMMERCIAL,LAND,GARAGE]
+apartmentTypes: [ApartmentType!] = null
+houseTypes: [HouseType!] = null
+landTypes: [LandType!] = null
+commercialTypes: [CommercialType!] = null
+garageTypes: [GarageType!] = null
+}
+
+input FeaturesFilter {
+balcony: Boolean = null
+terrace: Boolean = null
+loggia: Boolean = null
+cellar: Boolean = null
+pool: Boolean = null
+}
+
+"""
+Input pro přidání doplňujících informací pro garáže
+"""
+input GarageInput {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency!
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate!
+
+"Stav budovy"
+condition: Condition!
+
+"Základní stavební materiál budovy"
+material: Material!
+
+"Umístění budovy"
+placement: Placement!
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!]!
+
+"Výška stropů"
+ceilingHeight: Float! @floatConstraint(min: 0.0)
+
+"Užítná plocha"
+usableArea: Float! @floatConstraint(min: 0.0)
+
+"Rok výstavby"
+constructionYear: Int! @intConstraint(min: 1500, max: 2022)
+
+"Rok kolaudace"
+acceptanceYear: Int! @intConstraint(min: 1500, max: 2022)
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int @intConstraint(min: 1500, max: 2022)
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!]!
+
+"Typ objektu"
+type: GarageType!
+}
+
+"""
+Input pro úpravu doplňujících informací pro garáže
+"""
+input GarageInputEdit {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency @optional
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate @optional
+
+"Stav budovy"
+condition: Condition @optional
+
+"Základní stavební materiál budovy"
+material: Material @optional
+
+"Umístění budovy"
+placement: Placement @optional
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!] @optional
+
+"Výška stropů"
+ceilingHeight: Float @optional @floatConstraint(min: 0.0)
+
+"Užítná plocha"
+usableArea: Float @optional @floatConstraint(min: 0.0)
+
+"Rok výstavby"
+constructionYear: Int @optional @intConstraint(min: 1500, max: 2022)
+
+"Rok kolaudace"
+acceptanceYear: Int @optional @intConstraint(min: 1500, max: 2022)
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int @intConstraint(min: 1500, max: 2022)
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!] @optional
+
+"Typ objektu"
+type: GarageType @optional
+}
+
+"""
+Gps input - input for the GPS.
+"""
+input GpsInput {
+lat: Float! @floatConstraint(min: -90.0, max: 90.0)
+lng: Float! @floatConstraint(min: -180.0, max: 180.0)
+}
+
+"""
+Input pro přidání doplňujících informací pro domy
+"""
+input HouseInput {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency!
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate!
+
+"Stav budovy"
+condition: Condition!
+
+"Základní stavební materiál budovy"
+material: Material!
+
+"Umístění budovy"
+placement: Placement!
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!]!
+
+"Výška stropů"
+ceilingHeight: Float! @floatConstraint(min: 0.0)
+
+"Užítná plocha"
+usableArea: Float! @floatConstraint(min: 0.0)
+
+"Rok výstavby"
+constructionYear: Int! @intConstraint(min: 1500, max: 2022)
+
+"Rok kolaudace"
+acceptanceYear: Int! @intConstraint(min: 1500, max: 2022)
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int @intConstraint(min: 1500, max: 2022)
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!]!
+
+"Počet pokojů"
+roomCount: Int! @intConstraint(min: 0)
+
+"Plocha balkonu"
+balconyArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha terasy"
+terraceArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha lodžie"
+loggiaArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha sklepu"
+cellarArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha bazénu"
+poolArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha sauny"
+saunaArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha posilovny/tělocvičny"
+gymArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha prádelny"
+laundryRoomArea: Float = null @floatConstraint(min: 0.0)
+
+"Plocha sušárny"
+dryerRoomArea: Float = null @floatConstraint(min: 0.0)
+
+"Dostupné vybavení"
+amenity: [Amenity!]!
+
+"Dostupné vybavení (jednoduchá Sreality.cz verze)"
+amenitySimple: AmenitySimple = null
+
+"Typ domu"
+type: HouseType!
+
+"Plocha pozemku"
+landArea: Float! @floatConstraint(min: 0.0)
+}
+
+"""
+Input pro úpravu doplňujících informací pro domy
+"""
+input HouseInputEdit {
+"Energetická efektivita budovy"
+energyEfficiency: EnergyEfficiency @optional
+
+"Energetická efektivita podle vyhlášky"
+energyCertificate: EnergyCertificate @optional
+
+"Stav budovy"
+condition: Condition @optional
+
+"Základní stavební materiál budovy"
+material: Material @optional
+
+"Umístění budovy"
+placement: Placement @optional
+
+"Speciální klasifikace umístění"
+placementSpecial: [PlacementSpecial!] @optional
+
+"Výška stropů"
+ceilingHeight: Float @optional @floatConstraint(min: 0.0)
+
+"Užítná plocha"
+usableArea: Float @optional @floatConstraint(min: 0.0)
+
+"Rok výstavby"
+constructionYear: Int @optional @intConstraint(min: 1500, max: 2022)
+
+"Rok kolaudace"
+acceptanceYear: Int @optional @intConstraint(min: 1500, max: 2022)
+
+"Rok rekonstrukce. Povinný pro Condition::RECONSTRUCTED."
+reconstructionYear: Int @intConstraint(min: 1500, max: 2022)
+
+"Doplňkové vlastnosti budovy"
+buildingAddon: [BuildingAddon!] @optional
+
+"Počet pokojů"
+roomCount: Int @optional @intConstraint(min: 0)
+
+"Plocha balkonu"
+balconyArea: Float @floatConstraint(min: 0.0)
+
+"Plocha terasy"
+terraceArea: Float @floatConstraint(min: 0.0)
+
+"Plocha lodžie"
+loggiaArea: Float @floatConstraint(min: 0.0)
+
+"Plocha sklepu"
+cellarArea: Float @floatConstraint(min: 0.0)
+
+"Plocha bazénu"
+poolArea: Float @floatConstraint(min: 0.0)
+
+"Plocha sauny"
+saunaArea: Float @floatConstraint(min: 0.0)
+
+"Plocha posilovny/tělocvičny"
+gymArea: Float @floatConstraint(min: 0.0)
+
+"Plocha prádelny"
+laundryRoomArea: Float @floatConstraint(min: 0.0)
+
+"Plocha sušárny"
+dryerRoomArea: Float @floatConstraint(min: 0.0)
+
+"Dostupné vybavení"
+amenity: [Amenity!] @optional
+
+"Dostupné vybavení (jednoduchá Sreality.cz verze)"
+amenitySimple: AmenitySimple
+
+"Typ domu"
+type: HouseType @optional
+
+"Plocha pozemku"
+landArea: Float @optional @floatConstraint(min: 0.0)
+}
+
+input IntRange {
+greaterThan: Int = null
+lessThan: Int = null
+}
+
+"""
+Input pro přidání doplňujících informací pro pozemky
+"""
+input LandInput {
+"Typ pozemku"
+type: LandType!
+
+"Plocha pozemku"
+landArea: Float! @floatConstraint(min: 0.0)
+}
+
+"""
+Input pro úpravu doplňujících informací pro pozemky
+"""
+input LandInputEdit {
+"Typ pozemku"
+type: LandType @optional
+
+"Plocha pozemku"
+landArea: Float @optional @floatConstraint(min: 0.0)
+}
+
+input ListConstraintInput {
+minItems: Int = null @intConstraint(min: 0)
+maxItems: Int = null @intConstraint(min: 0)
+unique: Boolean! = false
+innerList: ListConstraintInput = null
+}
+
+"""
+Nastavení filru nabídek
+"""
+input ListingFilter {
+searchProjects: Boolean! = true
+location: LocationFilter! = {topLeft:{lat:55.0,lng:10.0},bottomRight:{lat:45.0,lng:20.0}}
+listingType: [ListingType!] = null
+serviceType: [ServiceType!] = null
+amenitySimple: [AmenitySimple!] = null
+material: [Material!] = null
+condition: [Condition!] = null
+energyEfficiency: [EnergyEfficiency!] = null
+energyCertificate: [EnergyCertificate!] = null
+ownershipType: [OwnershipType!] = null
+estateType: EstateTypeFilter = null
+features: FeaturesFilter = null
+amenity: AmenityFilter = null
+multimedia: MultimediaFilter = null
+price: PriceFilter = null
+usableArea: IntRange = null
+landArea: IntRange = null
+constructionYear: IntRange = null
+}
+
+"""
+Input pro přidání Listing
+"""
+input ListingInput @objectConstraint(exactlyOne: ["offer","auction","project"]) {
+customId: ID = null @stringConstraint(minLength: 1, maxLength: 50)
+title: LocalizationInput!
+description: LocalizationInput!
+sellerId: ID! @possibleTypes(abstractType: "Seller", concreteTypes: ["Company","Office","Broker","Individual"]) @auth(level: [OWNER,COWORKER])
+offer: OfferInput = null
+auction: AuctionInput = null
+project: ProjectInput = null
+}
+
+"""
+Input pro úpravu Listing
+"""
+input ListingInputEdit @objectConstraint(atMostOne: ["offer","auction","project"]) {
+customId: ID @stringConstraint(minLength: 1, maxLength: 50)
+title: LocalizationInputEdit @optional
+description: LocalizationInputEdit @optional
+sellerId: ID @optional @possibleTypes(abstractType: "Seller", concreteTypes: ["Company","Office","Broker","Individual"]) @auth(level: [OWNER,COWORKER])
+offer: OfferInputEdit @optional
+auction: AuctionInputEdit @optional
+project: ProjectInputEdit @optional
+}
+
+input LocalizationInput @objectConstraint(atLeastOne: ["global","cs"]) {
+global: String = null @stringConstraint(minLength: 10, maxLength: 5000)
+cs: String = null @stringConstraint(minLength: 10, maxLength: 5000)
+en: String = null @stringConstraint(minLength: 10, maxLength: 5000)
+de: String = null @stringConstraint(minLength: 10, maxLength: 5000)
+ru: String = null @stringConstraint(minLength: 10, maxLength: 5000)
+}
+
+input LocalizationInputEdit {
+global: String @stringConstraint(minLength: 10, maxLength: 5000)
+cs: String @stringConstraint(minLength: 10, maxLength: 5000)
+en: String @stringConstraint(minLength: 10, maxLength: 5000)
+de: String @stringConstraint(minLength: 10, maxLength: 5000)
+ru: String @stringConstraint(minLength: 10, maxLength: 5000)
+}
+
+input LocationFilter {
+topLeft: GpsInput!
+bottomRight: GpsInput!
+}
+
+"""
+Input pro přidání a úpravu MonetaryValue
+"""
+input MonetaryValueInput {
+value: Float! @floatConstraint(min: 0.0)
+currency: Currency!
+}
+
+input MultimediaFilter {
+video: Boolean! = false
+photo360: Boolean! = false
+matterport: Boolean! = false
+}
+
+"""
+Input pro přidání NoteBoolean
+"""
+input NoteBooleanInput {
+value: Boolean!
+note: LocalizationInput = null
+}
+
+"""
+Input pro úpravu NoteBoolean
+"""
+input NoteBooleanInputEdit {
+value: Boolean @optional
+note: LocalizationInputEdit
+}
+
+input ObjectConstraintInput {
+count: Int! @intConstraint(min: 1)
+from: [String!]! @listConstraint(minItems: 1)
+}
+
+"""
+Input pro přidání Offer
+"""
+input OfferInput @objectConstraint(exactlyOne: ["rent","transfer"]) {
+"Doplňkové informace specifické pro typ služby"
+rent: RentInput = null
+
+transfer: TransferInput = null
+
+"Nabízená nemovitost"
+estate: EstateInput!
+
+"Informace o prohlídce"
+tourNote: LocalizationInput!
+
+"Typ vlastnictví"
+ownershipType: OwnershipType!
+
+"Anuita, povinná pro ownershipType::COOPERATIVE"
+annuity: MonetaryValueInput = null
+
+"Cena"
+price: PriceInput!
+}
+
+"""
+Input pro úpravu Offer
+"""
+input OfferInputEdit @objectConstraint(atMostOne: ["rent","transfer"]) {
+"Doplňkové informace specifické pro typ služby"
+rent: RentInputEdit @optional
+
+transfer: TransferInputEdit @optional
+
+"Nabízená nemovitost"
+estate: EstateInputEdit @optional
+
+"Informace o prohlídce"
+tourNote: LocalizationInputEdit @optional
+
+"Typ vlastnictví"
+ownershipType: OwnershipType @optional
+
+"Anuita, povinná pro ownershipType::COOPERATIVE"
+annuity: MonetaryValueInput
+
+"Cena"
+price: PriceInput @optional
+}
+
+"""
+Input pro přidání pobočky
+"""
+input OfficeInput {
+name: String!
+description: LocalizationInput!
+email: EmailAddress!
+phone: PhoneNumber!
+website: Url = null
+headquarters: AddressRuianInput!
+}
+
+"""
+Input pro úpravu pobočky
+"""
+input OfficeInputEdit {
+name: String @optional
+description: LocalizationInputEdit @optional
+email: EmailAddress @optional
+phone: PhoneNumber @optional
+website: Url
+headquarters: AddressRuianInput @optional
+}
+
+"""
+Nastavení filru podle ceny
+"""
+input PriceFilter {
+valueFrom: Float = null
+valueTo: Float = null
+currency: Currency! = CZK
+unit: PriceUnit! = PROPERTY
+
+"Při nastavení NONE je automaticky aplikován filter typ služby prodej, pro ostatní hodnoty je automaticky aplikován typ služby pronájem."
+period: PricePeriod! = NONE
+
+includesVat: Boolean = null
+includesCommission: Boolean = null
+includesLawService: Boolean = null
+}
+
+"""
+Input pro přidání Price
+"""
+input PriceInput {
+value: Float! @floatConstraint(min: 0.0)
+currency: Currency!
+unit: PriceUnit!
+period: PricePeriod!
+includesVat: Boolean! = true
+includesCommission: Boolean! = true
+includesLawService: Boolean! = true
+note: LocalizationInput = null
+}
+
+"""
+Input pro přidání projektu
+"""
+input ProjectInput {
+listings: [ListingInput!]!
+saleStartDate: Date!
+}
+
+"""
+Input pro úpravu projektu
+"""
+input ProjectInputEdit {
+saleStartDate: Date! @optional
+}
+
+"""
+Input pro přidání doplňujících informací pro pronájem
+"""
+input RentInput {
+"Omezení při používání pronajatého objektu"
+restriction: [Restriction!]!
+
+"Datum nastěhování"
+movingInDate: Date!
+
+"Minimální počet pronajatých měsíců"
+minRentLength: Int = null
+}
+
+"""
+Input pro úpravu doplňujících informací pro pronájem
+"""
+input RentInputEdit {
+"Omezení při používání pronajatého objektu"
+restriction: [Restriction!] @optional
+
+"Datum nastěhování"
+movingInDate: Date @optional
+
+"Minimální počet pronajatých měsíců"
+minRentLength: Int
+}
+
+"""
+Input pro přidání prodávajícího
+"""
+input SellerIndividualInput {
+name: String!
+email: EmailAddress!
+phone: PhoneNumber!
+}
+
+"""
+Input pro úpravu prodávajícího
+"""
+input SellerIndividualInputEdit {
+name: String! @optional
+email: EmailAddress! @optional
+phone: PhoneNumber! @optional
+}
+
+"""
+Input pro přidání prodávajícího
+"""
+input SellerStructuralInput @objectConstraint(exactlyOne: ["broker","office"]) {
+customId: ID = null @stringConstraint(minLength: 1, maxLength: 50)
+broker: BrokerInput = null
+office: OfficeInput = null
+}
+
+"""
+Input pro úpravu prodávajícího
+"""
+input SellerStructuralInputEdit @objectConstraint(atMostOne: ["broker","office"]) {
+customId: ID @stringConstraint(minLength: 1, maxLength: 50)
+broker: BrokerInputEdit @optional
+office: OfficeInputEdit @optional
+}
+
+"""
+Input pro přidání doplňujících informací pro prodej
+"""
+input TransferInput {
+"Prodej společnosti"
+withCompany: Boolean!
+}
+
+"""
+Input pro úpravu doplňujících informací pro prodej
+"""
+input TransferInputEdit {
+"Prodej společnosti"
+withCompany: Boolean @optional
+}
+
+input WalletInput {
+legalObjectType: LegalObjectType!
+vatRegistered: Boolean!
+
+"Povinné pokud vatRegistered == true"
+dic: String = null
+
+email: EmailAddress!
+address: AddressRuianInput!
+}
+
+input WalletInputEdit {
+legalObjectType: LegalObjectType @optional
+vatRegistered: Boolean @optional
+dic: String
+email: EmailAddress @optional
+address: AddressRuianInput @optional
+}
+
+"""
+Any addon type, accepts any scalar type - String, Int, Float or Bool.
+"""
+scalar Any
+
+"""
+Date type - string which contains valid date in "<YYYY>-<MM>-<DD>" format.
+"""
+scalar Date @specifiedBy(url: "https://datatracker.ietf.org/doc/html/rfc3339#section-5.6")
+
+"""
+DateTime type - string which contains valid date in ISO8601 format.
+"""
+scalar DateTime @specifiedBy(url: "https://datatracker.ietf.org/doc/html/rfc3339#section-5.6")
+
+"""
+EmailAddress type - string which contains valid email address.
+"""
+scalar EmailAddress @specifiedBy(url: "https://datatracker.ietf.org/doc/html/rfc5322#section-3.4.1")
+
+"""
+Json type - string which contains valid JSON.
+"""
+scalar Json @specifiedBy(url: "https://datatracker.ietf.org/doc/html/rfc7159")
+
+"""
+PhoneNumber type - string which contains valid phone number.
+The accepted format is without spaces and other special characters, but the leading plus is required.
+"""
+scalar PhoneNumber @specifiedBy(url: "https://datatracker.ietf.org/doc/html/rfc3966#section-5.1")
+
+"""
+Url type - string which contains valid URL (Uniform Resource Locator).
+"""
+scalar Url @specifiedBy(url: "https://datatracker.ietf.org/doc/html/rfc3986")
+
+"""
+Rozostření adresy
+"""
+enum AddressBlur {
+"Žádné - zobrazit přesnou adresu"
+NONE
+
+"Ulice - zobrazit jméno ulice bez blížšího upřesnění"
+STREET
+
+"Čtvrť - zobrazit jméno městské části"
+CITY_PART
+
+"Obec - zobrazit jméno obce"
+CITY
+}
+
+"""
+Vybavení nemovitosti
+"""
+enum Amenity {
+"Pračka"
+WASHING_MACHINE
+
+"Sušička"
+DRYER
+
+"Lednice"
+FRIDGE
+
+"Mrazák"
+FREEZER
+
+"Myčka nádobí"
+DISHWASHER
+
+"Touba"
+OVEN
+
+"Mikrovlná trouba"
+MICROWAVE
+
+"Kuchyňská linka"
+KITCHEN_WORKTOP
+
+"Indukční vařič"
+INDUCTION_COOKER
+
+"Kávovar"
+COFFEE_MAKER
+
+"Rychlovarná konvice"
+KETTLE
+
+"Trezor"
+VAULT
+
+"Televize"
+TELEVISION
+
+"Pohovka"
+SOFA
+}
+
+"""
+Vybavení nemovitosti - zjednodušená SReality.cz verze
+"""
+enum AmenitySimple {
+"Ano"
+YES
+
+"Ne"
+NO
+
+"Částečně"
+PARTLY
+}
+
+"""
+Speciální kvalifikace bytu
+"""
+enum ApartmentSpecialType {
+"Mezonet"
+MAISONETTE
+
+"Loft"
+LOFT
+
+"Podkrovní"
+ATTIC
+}
+
+"""
+Typ bytu
+"""
+enum ApartmentType {
+"1+kk"
+APAR_1KK
+
+"1+1"
+APAR_11
+
+"2+kk"
+APAR_2KK
+
+"2+1"
+APAR_21
+
+"3+kk"
+APAR_3KK
+
+"3+1"
+APAR_31
+
+"4+kk"
+APAR_4KK
+
+"4+1"
+APAR_41
+
+"5+kk"
+APAR_5KK
+
+"5+1"
+APAR_51
+
+"6 a více"
+APAR_6
+
+"Pokoj"
+APAR_ROOM
+
+"Jiné"
+OTHER
+}
+
+"""
+Typ lokality pro konání aukce
+"""
+enum AuctionLocationType {
+"Na adrese"
+ADDRESS
+
+"Elektronická"
+ONLINE
+}
+
+"""
+Možnosti omezení v přístupu k resource
+"""
+enum AuthLevel {
+"""
+Veřejný záznam
+- Seller je vždy veřejný.
+- Listing musí být ve stavu ACTIVE.
+- Figure musí náležet k Listing/Seller je splňuje PUBLIC.
+"""
+PUBLIC
+
+"""
+Spolupracovník ve firmě
+- Seller musí náležet do stejné firmy jako jeden ze sellerů registrovaných k aktuálnímu uživateli.
+- Listing musí patřit Seller co splnuje COWORKER.
+- Figure musí náležet k Listing/Seller co splňuje COWORKER.
+"""
+COWORKER
+
+"""
+Vlastník
+- Seller musí být jeden ze sellerů registrovaných k aktuálnímu uživateli.
+- Listing musí patřit Seller co splnuje OWNER.
+- Figure musí náležet k Listing/Seller co splňuje OWNER.
+"""
+OWNER
+
+"""
+Nadřízený
+- Seller musí být podřízený jednoho ze sellerů registrovaných k aktuálnímu uživateli.
+- Listing musí patřit Seller co splnuje SUPERVISOR.
+- Figure musí náležet k Listing/Seller co splňuje SUPERVISOR.
+"""
+SUPERVISOR
+}
+
+"""
+Doplňkové vlastnosti stavby
+"""
+enum BuildingAddon {
+"Výtah"
+ELEVATOR
+
+"Bezbariérový přístup"
+BARRIER_FREE
+
+"Fotovoltaika"
+PHOTOVOLTAICS
+
+"Rekuperace"
+RECUPERATION
+
+"Zásuvka na nabíjení auta"
+CAR_CHARGER
+
+"Bateriový systém"
+BATTERY_SYSTEM
+
+"Detektor kouře"
+SMOKE_DETECTOR
+
+"Zvýšené zabezpečení"
+ENHANCED_SECURITY
+
+"Chytrá domácnost"
+SMART_HOME
+
+"Klimatizace"
+AIR_CONDITIONING
+}
+
+"""
+Světová strana
+"""
+enum CardinalDirection {
+"Sever"
+NORTH
+
+"Severozápad"
+NORTH_WEST
+
+"Západ"
+WEST
+
+"Jihozápad"
+SOUTH_WEST
+
+"Jih"
+SOUTH
+
+"Jihovýchod"
+SOUTH_EAST
+
+"Východ"
+EAST
+
+"Jihozápad"
+NORTH_EAST
+}
+
+"""
+Způsob řazení komentářů
+"""
+enum CommentSort {
+"Od nejnovějšího"
+NEWEST
+}
+
+"""
+Typ komerčního prostoru
+"""
+enum CommercialType {
+"Kanceláře"
+COMM_OFFICE
+
+"Virtuální kanceláře"
+COMM_VIRTUAL_OFFICE
+
+"Sklady"
+COMM_WAREHOUSE
+
+"Výroba"
+COMM_PRODUCTION
+
+"Obchodní prostory"
+COMM_STORE
+
+"Ubytování"
+COMM_ACCOMMODATION
+
+"Restaurace"
+COMM_CATERING
+
+"Zemědělské prostory"
+COMM_AGRICULTURAL
+
+"Činžovní dům"
+COMM_APARTMENTS
+
+"Jiné"
+OTHER
+}
+
+"""
+Stav budovy
+"""
+enum Condition {
+"Novostavba"
+NEW
+
+"Výborný"
+EXCELLENT
+
+"Dobrý"
+GOOD
+
+"Špatný"
+BAD
+
+"Po rekonstrukci"
+RECONSTRUCTED
+
+"Před rekonstrukcí"
+BEFORE_RECONSTRUCTION
+
+"Ve výstavbě"
+CONSTRUCTION
+
+"K demolici"
+DEMOLITION
+}
+
+"""
+Telekomunikační sítě
+"""
+enum Connectivity {
+"Internet optickým kabelem"
+INTERNET_OPTICAL
+
+"Internet DSL"
+INTERNET_DSL
+
+"Internet LTE"
+INTERNET_LTE
+
+"Televize anténou"
+TELEVISION_ANTENNA
+
+"Televize satelitem"
+TELEVISION_SATELLITE
+
+"Televize"
+TELEVISION_CABLE
+
+"Televize internetová"
+TELEVISION_IPTV
+
+"Telefon (pevná linka)"
+TELEPHONE
+
+"Kabelové rozvody"
+CABLE_DISTRIBUTION
+}
+
+"""
+Státy
+"""
+enum Country {
+"Česká Republika"
+CZECHIA
+}
+
+"""
+Měna
+"""
+enum Currency {
+"Koruna česká"
+CZK
+
+"Euro"
+EUR
+
+"Americký dolar"
+USD
+
+"Ruský rubl"
+RUB
+}
+
+"""
+Elektřina
+"""
+enum Electricity {
+"120V (v ČR historické, používané v USA)"
+V120
+
+"230V (běžné v ČR)"
+V230
+
+"400V (průmyslové)"
+V400
+}
+
+"""
+Energetická vyhláška
+"""
+enum EnergyCertificate {
+"č. 148/2007 Sb."
+V147_2007
+
+"č. 78/2013 Sb."
+V78_2013
+
+"č. 264/2020 Sb."
+V264_2020
+}
+
+"""
+Energetická náročnost
+"""
+enum EnergyEfficiency {
+"Mimořádně úsporná"
+A
+
+"Velmi úsporná"
+B
+
+"Úsporná"
+C
+
+"Méně úsporná"
+D
+
+"Nehospodárná"
+E
+
+"Velmi nehospodárná"
+F
+
+"Mimořádně nehospodárná"
+G
+}
+
+"""
+Vybavení komerčních prostor
+"""
+enum Equipment {
+"Logistika"
+LOGISTICS
+
+"Jeřáb"
+CRANE
+
+"Rampa"
+RAMP
+
+"Paletové místo"
+PALLET_SPACE
+}
+
+"""
+Kategorie nemovitosti
+"""
+enum EstateType {
+"Byt"
+APARTMENT
+
+"Dům"
+HOUSE
+
+"Komerční prostor"
+COMMERCIAL
+
+"Pozemek"
+LAND
+
+"Garáž a ostatní"
+GARAGE
+}
+
+"""
+Způsob řazení grafických položek
+"""
+enum FigureSort {
+"Základní řazení"
+DEFAULT
+}
+
+"""
+Velikost řádku na frontpage
+"""
+enum FrontpageRowSize {
+"Malý"
+SMALL
+
+"Střední"
+MEDIUM
+
+"Velký"
+LARGE
+}
+
+"""
+Typ ostatních nemovitostí
+"""
+enum GarageType {
+"Garáž"
+GARAGE_GARAGE
+
+"Garážové stání"
+GARAGE_PARKING
+
+"Mobilheim"
+GARAGE_MOBILHEIM
+
+"Půdní prostor"
+GARAGE_ATTIC
+
+"Vinný sklep"
+GARAGE_WINE
+
+"Jiné"
+OTHER
+}
+
+"""
+Plyn
+"""
+enum Gas {
+"Plynovod"
+PIPELINE
+
+"Individuální"
+INDIVIDUAL
+}
+
+"""
+Vytápění
+"""
+enum Heating {
+"Lokální plynové"
+INDIVIDUAL_GAS
+
+"Lokální na tuhá paliva"
+INDIVIDUAL_SOLID
+
+"Lokální elektrické"
+INDIVIDUAL_ELECTRIC
+
+"Ústřední plynové"
+CENTRAL_GAS
+
+"Ústřední na tuhá paliva"
+CENTRAL_SOLID
+
+"Ústřední elektrické"
+CENTRAL_ELECTRIC
+
+"Ústřední dálkové"
+CENTRAL_REMOTE
+
+"Jiné"
+OTHER
+}
+
+"""
+Typ domu
+"""
+enum HouseType {
+"Rodinný dům"
+HOUSE_FAMILY
+
+"Vila"
+HOUSE_FAIRY
+
+"Chata"
+HOUSE_HUT
+
+"Chalupa"
+HOUSE_COTTAGE
+
+"Zemědělská usedlost"
+HOUSE_FARMLAND
+
+"Dům na klíč"
+HOUSE_TURNKEY
+
+"Jiné"
+OTHER
+}
+
+"""
+Typ pozemku
+"""
+enum LandType {
+"Bydlení"
+LAND_HOUSING
+
+"Komerční"
+LAND_COMMERCIAL
+
+"Pole"
+LAND_FIELD
+
+"Louky"
+LAND_MEADOW
+
+"Lesy"
+LAND_FOREST
+
+"Rybníky"
+LAND_POND
+
+"Sady nebo vinice"
+LAND_ORCHARD
+
+"Zahrady"
+LAND_GARDEN
+
+"Jiné"
+OTHER
+}
+
+"""
+Jazyk
+"""
+enum Language {
+"Globální"
+GLOBAL
+
+"Čeština"
+CS
+
+"Angličtina"
+EN
+
+"Ruština"
+RU
+
+"Němčina"
+DE
+}
+
+"""
+Zákonná ochrana
+"""
+enum LawProtection {
+"Žádná"
+NONE
+
+"Ochrané pásmo"
+RESTRICTED_AREA
+
+"Chráněná krajiná oblast"
+LANDSCAPE_AREA
+
+"Národní park"
+NATIONAL_PARK
+}
+
+"""
+Typ firmy - typ firmy pro účely účetnictví
+"""
+enum LegalObjectType {
+"Česká právnická osoba"
+CZECH_LEGAL_OBJECT
+}
+
+"""
+Délka inzerování nabídky
+"""
+enum ListingPublishLength {
+"3 dny"
+THREE_DAYS
+
+"1 týden"
+ONE_WEEK
+
+"2 týdny"
+ACTIVE
+
+"1 měsíc"
+FINISHED
+
+"Neomezená (dokud není manuálně vypnuto)"
+UNLIMITED
+}
+
+"""
+Způsob řazení nabídek
+"""
+enum ListingSort {
+"Doporučené řazení"
+RELEVANCE
+
+"Od nejnovějšího"
+NEWEST
+
+"Od nejlevnějšího"
+CHEAPEST
+
+"Od nejdražšího"
+MOST_EXPENSIVE
+}
+
+"""
+Stav nabídky
+"""
+enum ListingState {
+"V přípravě"
+DRAFT
+
+"Publikovaná"
+ACTIVE
+
+"Dokončená"
+FINISHED
+
+"Zrušená"
+CANCELLED
+
+"Pozastavená (z důvodu nezaplacení inzerce)"
+PENDING
+}
+
+"""
+Typ nabídky
+"""
+enum ListingType {
+"Standardní nabídka"
+OFFER
+
+"Aukce"
+AUCTION
+
+"Developerský projekt"
+PROJECT
+}
+
+"""
+Materiál
+"""
+enum Material {
+"Dřevěný"
+WOOD
+
+"Cihelný"
+BRICK
+
+"Kamenný"
+STONE
+
+"Panelový"
+PANEL
+
+"Smíšený"
+MIXED
+
+"Montovaná stavba"
+MOUNTED
+
+"Skeletová stavba"
+SKELETAL
+}
+
+"""
+Technologie pro odesílání notifikací
+"""
+enum NotificationPlatform {
+"Emailové notifikace"
+EMAIL
+}
+
+"""
+Způsob řazení notifikací
+"""
+enum NotificationSort {
+"Od nejnovějšího"
+NEWEST
+}
+
+"""
+Třída kancelářských prostor
+"""
+enum OfficeClass {
+"Třída A"
+A
+
+"Třída B"
+B
+
+"Třída C"
+C
+}
+
+"""
+Typ vlastnictví
+"""
+enum OwnershipType {
+"Osobní"
+PRIVATE
+
+"Družstevní"
+COOPERATIVE
+
+"Státní/obecní"
+STATE
+}
+
+"""
+Umístění budovy
+"""
+enum Placement {
+"V bloku"
+BLOCK
+
+"Samostatný"
+STANDALONE
+}
+
+"""
+Speciální umístění
+"""
+enum PlacementSpecial {
+"Řadový"
+TERRACED
+
+"Rohový"
+CORNER
+}
+
+"""
+Typ bodu zájmu
+"""
+enum PointOfInterestType {
+"Školka"
+KINDERGARTEN
+
+"Základní škola"
+ELEMENTARY_SCHOOL
+
+"Střední škola"
+HIGH_SCHOOL
+
+"Vysoká škola"
+UNIVERSITY
+
+"Supermarket"
+SUPERMARKET
+
+"Lokální obchod s každodením zbožím"
+CONVENIENCE_STORE
+
+"Lékárna"
+PHARMACY
+
+"Zdravotnická instituce (klinika, nemocnice)"
+MEDICAL_CARE
+
+"MHD - Autobus"
+PUBLIC_TRANSPORT_BUS
+
+"MHD - Tramvaj"
+PUBLIC_TRANSPORT_TRAM
+
+"MHD - Trolejbus"
+PUBLIC_TRANSPORT_TROLLEYBUS
+
+"MHD - Metro"
+PUBLIC_TRANSPORT_SUBWAY
+
+"MHD - Vlak"
+PUBLIC_TRANSPORT_TRAIN
+}
+
+"""
+Perioda ceny
+"""
+enum PricePeriod {
+"Žádná (při prodeji)"
+NONE
+
+"Za rok"
+YEAR
+
+"Za měsíc"
+MONTH
+
+"Za den"
+DAY
+
+"Za hodinu"
+HOUR
+}
+
+"""
+Jednotky ceny
+"""
+enum PriceUnit {
+"Za nemovitost"
+PROPERTY
+
+"Za metr čtvereční"
+M2
+}
+
+"""
+Region pro určení ceny inzerce
+"""
+enum PricingRegion {
+"Region 1 - Praha, Středočeský kraj, Moravskoslezký kraj, Jihomoravský kraj"
+REG1
+
+"Region 2 - Ostatní"
+REG2
+}
+
+"""
+Způsob řazení odpovědí na reakci
+"""
+enum ReactionReplySort {
+"Od nejnovějšího"
+NEWEST
+}
+
+"""
+Způsob řazení reakcí
+"""
+enum ReactionSort {
+"Od nejnovějšího"
+NEWEST
+}
+
+"""
+Omezení v užívání nemovitosti
+"""
+enum Restriction {
+"Domácí mazlíčci"
+ANIMALS
+
+"Kouření"
+SMOKING
+}
+
+"""
+Přístupová cesta
+"""
+enum Road {
+"Asfaltová"
+ASPHALT
+
+"Betonová"
+CONCRETE
+
+"Dlážděná"
+PAVEMENT
+
+"Neupravená"
+UNTREATED
+}
+
+"""
+Způsob řazení prodávajích
+"""
+enum SellerSort {
+"Doporučené řazení"
+RELEVANCE
+}
+
+"""
+Typ prodávajícího
+"""
+enum SellerType {
+"Firma"
+COMPANY
+
+"Kancelář"
+OFFICE
+
+"Makléř"
+BROKER
+
+"Fyzická osoba"
+INDIVIDUAL
+}
+
+"""
+Typ služby
+"""
+enum ServiceType {
+"Pronájem"
+RENT
+
+"Koupě a prodej"
+TRANSFER
+}
+
+"""
+Využitelné společné prostory
+"""
+enum SharedSpace {
+"Recepce"
+RECEPTION
+
+"Domovník"
+CARETAKER
+
+"Společná místnost"
+COMMON_ROOM
+
+"Společný pozemek"
+COMMON_LAND
+
+"Bazén"
+POOL
+
+"Sauna"
+SAUNA
+
+"Tělocvična"
+GYM
+
+"Kolárna"
+BIKE_SHED
+
+"Prádelna"
+LAUNDRY_ROOM
+
+"Sušárna"
+DRYER_ROOM
+
+"Mandl"
+MANGLE
+}
+
+"""
+Rozložení figur na slajdu
+"""
+enum SlideLayout {
+"Primární vlevo"
+LEFT
+
+"Primární vpravo"
+RIGHT
+
+"Rovnoměrné"
+EVEN
+}
+
+"""
+Způsob řazení slidů
+"""
+enum SlideSort {
+"Doporučené řazení"
+ORDER
+}
+
+"""
+Typ slajdu
+"""
+enum SlideType {
+"Jedna položka"
+SINGLE
+
+"Dvě položky"
+DOUBLE
+
+"Tři položky"
+TRIPLE
+}
+
+"""
+Druh tagu pro zvýraznění nabídky
+"""
+enum TagType {
+"Visuálně vyladěná nabídka - obsahuje prohlídku Matterport, 360 fotku, nebo prezentační video"
+VISUAL
+
+"Nová nabídka - nově přidaná nabídka"
+NEW
+}
+
+"""
+Třída skladu
+"""
+enum WarehouseClass {
+"Třída A+"
+A_PLUS
+
+"Třída A"
+A
+
+"Třída B+"
+B_PLUS
+
+"Třída B"
+B
+
+"Třída C"
+C
+
+"Třída D"
+D
+}
+
+"""
+Odpad
+"""
+enum Waste {
+"Kanalizace"
+SEWERAGE
+
+"Domovní čistírna odpadních vod"
+PLANT
+
+"Septik"
+SEPTIC
+
+"Jímka"
+SUMP
+}
+
+"""
+Voda
+"""
+enum Water {
+"Vodovod"
+PIPELINE
+
+"Individuální (místní zdroj)"
+INDIVIDUAL
+}
+
+"""
+Uživatel musí naplňovat určitou úroveň přístupu
+"""
+directive @auth(
+level: [AuthLevel!]!
+) on FIELD_DEFINITION | ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
+
+"""
+Graphpinator booleanWhere directive.
+"""
+directive @booleanWhere(
+field: String
+not: Boolean! = false
+equals: Boolean
+orNull: Boolean! = false
+) repeatable on FIELD
+
+"""
+Graphpinator floatConstraint directive.
+"""
+directive @floatConstraint(
+min: Float
+max: Float
+oneOf: [Float!] @listConstraint(minItems: 1)
+) on FIELD_DEFINITION | ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION 
+
+"""
+Graphpinator floatWhere directive.
+"""
+directive @floatWhere(
+field: String
+not: Boolean! = false
+equals: Float
+greaterThan: Float
+lessThan: Float
+orNull: Boolean! = false
+) repeatable on FIELD
+
+"""
+Graphpinator intConstraint directive.
+"""
+directive @intConstraint(
+min: Int
+max: Int
+oneOf: [Int!] @listConstraint(minItems: 1)
+) on FIELD_DEFINITION | ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION 
+
+"""
+Graphpinator intWhere directive.
+"""
+directive @intWhere(
+field: String
+not: Boolean! = false
+equals: Int
+greaterThan: Int
+lessThan: Int
+orNull: Boolean! = false
+) repeatable on FIELD
+
+"""
+Graphpinator listConstraint directive.
+"""
+directive @listConstraint(
+minItems: Int = null @intConstraint(min: 0)
+maxItems: Int = null @intConstraint(min: 0)
+unique: Boolean! = false
+innerList: ListConstraintInput = null
+) on FIELD_DEFINITION | ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION 
+
+"""
+Graphpinator listWhere directive.
+"""
+directive @listWhere(
+field: String
+not: Boolean! = false
+minItems: Int @intConstraint(min: 0)
+maxItems: Int @intConstraint(min: 0)
+orNull: Boolean! = false
+) repeatable on FIELD
+
+"""
+Uživatel musí být přihlášený
+"""
+directive @loggedIn on FIELD_DEFINITION
+
+"""
+Field guarantees it wont return null when the condition is met.
+"""
+directive @notNullForArg(
+"Name of argument in question."
+name: String!
+
+"Value for which the field guarantees it does not return null."
+equals: String
+) on FIELD_DEFINITION
+
+"""
+Graphpinator objectConstraint directive.
+"""
+directive @objectConstraint(
+atLeastOne: [String!] @listConstraint(minItems: 1)
+atMostOne: [String!] @listConstraint(minItems: 1)
+exactlyOne: [String!] @listConstraint(minItems: 1)
+atLeast: ObjectConstraintInput
+atMost: ObjectConstraintInput
+exactly: ObjectConstraintInput
+) repeatable on OBJECT | INTERFACE | INPUT_OBJECT
+
+"""
+Input value for this argument can be either omitted or have non-null value.
+"""
+directive @optional on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
+
+"""
+Defines what type of global IDs are accepted for a mutation argument of type ID
+"""
+directive @possibleTypes(
+abstractType: String
+concreteTypes: [String!]!
+) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
+
+"""
+Výsledek se liší klient od klienta
+"""
+directive @sessionDependent on FIELD_DEFINITION
+
+"""
+Graphpinator stringConstraint directive.
+"""
+directive @stringConstraint(
+minLength: Int @intConstraint(min: 0)
+maxLength: Int @intConstraint(min: 0)
+regex: String
+oneOf: [String!] @listConstraint(minItems: 1)
+) on FIELD_DEFINITION | ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION 
+
+"""
+Graphpinator stringWhere directive.
+"""
+directive @stringWhere(
+field: String
+not: Boolean! = false
+equals: String
+contains: String
+startsWith: String
+endsWith: String
+orNull: Boolean! = false
+) repeatable on FIELD

@@ -1,0 +1,27 @@
+﻿@page "/"
+@using ShakeRepro3.Graphql.Generated
+@using StrawberryShake
+@using System.Text.Json
+
+@inject BridgeClient BridgeClient
+
+@if (Result is not null)
+{
+    <p>@string.Join(" ", Result.Errors.Select(e=>e.Exception?.StackTrace)).)</p>
+
+}
+
+@code {
+
+    private IOperationResult<IGetProjectDetailItemsResult>? Result;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Result = await BridgeClient.GetProjectDetailItems.ExecuteAsync("qrp2dWYm1B", Currency.Czk, PricePeriod.Month, CancellationToken.None);
+            StateHasChanged();
+        }
+    }
+
+}

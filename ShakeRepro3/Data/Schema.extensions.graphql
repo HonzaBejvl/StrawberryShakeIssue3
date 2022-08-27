@@ -1,0 +1,3 @@
+extend schema @key(fields: "id")
+extend scalar Url @serializationType(name: "global::System.String") @runtimeType(name: "global::System.Uri")
+extend scalar Any @serializationType(name: "global::System.Object") @runtimeType(name: "global::System.Text.Json.JsonElement")
